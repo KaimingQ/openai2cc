@@ -60,6 +60,66 @@ def _upstream_headers() -> Dict[str, str]:
     return headers
 
 
+def _content_to_text(content: Any) -> str:
+    """Flatten an OpenAI message content (str or parts list) to plain text."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for p in content:
+            if isinstance(p, dict):
+                if p.get("type") == "text":
+                    parts.append(p.get("text", ""))
+                elif p.get("type") == "image_url":
+                    parts.append("[image]")
+                else:
+                    parts.append(json.dumps(p, ensure_ascii=False))
+            else:
+                parts.append(str(p))
+        return "\n".join(parts)
+    return str(content)
+
+
+def _extract_input_preview(openai_body: Dict[str, Any]) -> str:
+    """Human-readable preview of the newest user turn being sent upstream."""
+    messages = openai_body.get("messages") or []
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            text = _content_to_text(msg.get("content"))
+            if text.strip():
+                return text
+    if messages:
+        return _content_to_text(messages[-1].get("content"))
+    return ""
+
+
+def _blocks_to_output_preview(content_blocks: Any) -> str:
+    """Readable preview of Anthropic response content blocks."""
+    parts = []
+    for b in content_blocks or []:
+        btype = b.get("type")
+        if btype == "thinking":
+            parts.append("【思考】" + b.get("thinking", ""))
+        elif btype == "text":
+            parts.append(b.get("text", ""))
+        elif btype == "tool_use":
+            args = json.dumps(b.get("input", {}), ensure_ascii=False)
+            parts.append(f"[tool_use {b.get('name', '')}] {args}")
+    return "\n".join(p for p in parts if p)
+
+
+def _stream_output_preview(output_text: str, thinking_text: str) -> str:
+    """Combine streamed reasoning + answer into one preview string."""
+    parts = []
+    if thinking_text:
+        parts.append("【思考】" + thinking_text)
+    if output_text:
+        parts.append(output_text)
+    return "\n".join(parts)
+
+
 @app.get("/")
 async def root() -> Any:
     """Serve the local web UI (falls back to JSON info if UI missing)."""
@@ -205,6 +265,7 @@ async def _complete_upstream(
     started: float,
 ) -> JSONResponse:
     """Perform a non-streaming upstream request and translate the response."""
+    input_preview = _extract_input_preview(openai_body)
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
             resp = await client.post(
@@ -220,6 +281,8 @@ async def _complete_upstream(
             latency_ms=(time.perf_counter() - started) * 1000,
             stream=False,
             status="error",
+            input_preview=input_preview,
+            output_preview=f"连接错误: {exc}",
         )
         raise HTTPException(status_code=502, detail=f"Upstream error: {exc}")
 
@@ -234,6 +297,8 @@ async def _complete_upstream(
             latency_ms=latency_ms,
             stream=False,
             status="error",
+            input_preview=input_preview,
+            output_preview=f"HTTP {resp.status_code}: {resp.text[:1000]}",
         )
         return JSONResponse(
             status_code=resp.status_code,
@@ -254,6 +319,8 @@ async def _complete_upstream(
         latency_ms=latency_ms,
         stream=False,
         status="ok",
+        input_preview=input_preview,
+        output_preview=_blocks_to_output_preview(anthropic_resp.get("content")),
     )
     return JSONResponse(content=anthropic_resp)
 
@@ -267,8 +334,15 @@ async def _stream_upstream(
 ) -> AsyncIterator[str]:
     """Stream from upstream and translate SSE chunks to Anthropic events."""
     message_id = "msg_stream"
+    input_preview = _extract_input_preview(openai_body)
 
-    def _on_complete(input_tokens: int, output_tokens: int, _reason: Any) -> None:
+    def _on_complete(
+        input_tokens: int,
+        output_tokens: int,
+        finish_reason: Any = None,
+        output_text: str = "",
+        thinking_text: str = "",
+    ) -> None:
         stats.record(
             requested_model=original_model,
             mapped_model=mapped_model,
@@ -277,6 +351,8 @@ async def _stream_upstream(
             latency_ms=(time.perf_counter() - started) * 1000,
             stream=True,
             status="ok",
+            input_preview=input_preview,
+            output_preview=_stream_output_preview(output_text, thinking_text),
         )
 
     try:
@@ -295,6 +371,8 @@ async def _stream_upstream(
                         latency_ms=(time.perf_counter() - started) * 1000,
                         stream=True,
                         status="error",
+                        input_preview=input_preview,
+                        output_preview=f"HTTP {resp.status_code}: {detail[:1000]}",
                     )
                     err = {
                         "type": "error",
@@ -317,6 +395,8 @@ async def _stream_upstream(
             latency_ms=(time.perf_counter() - started) * 1000,
             stream=True,
             status="error",
+            input_preview=input_preview,
+            output_preview=f"连接错误: {exc}",
         )
         err = {
             "type": "error",

@@ -39,18 +39,22 @@ class _StreamState:
         self.input_tokens = 0
         self.output_tokens = 0
         self.finish_reason: Optional[str] = None
+        # accumulated visible text + reasoning for statistics / detail view
+        self.text_pieces: list[str] = []
+        self.thinking_pieces: list[str] = []
 
 
 async def convert_openai_stream_to_anthropic(
     openai_lines: AsyncIterator[str],
     original_model: str,
     message_id: str,
-    on_complete: Optional[Callable[[int, int, Optional[str]], None]] = None,
+    on_complete: Optional[Callable[..., None]] = None,
 ) -> AsyncIterator[str]:
     """Yield Anthropic SSE strings translated from an OpenAI SSE line stream.
 
-    ``on_complete`` (if given) is called once at the end with
-    ``(input_tokens, output_tokens, finish_reason)`` for statistics.
+    ``on_complete`` (if given) is called once at the end with keyword args
+    ``(input_tokens, output_tokens, finish_reason, output_text, thinking_text)``
+    for statistics / the request detail view.
     """
     state = _StreamState()
 
@@ -125,6 +129,7 @@ async def convert_openai_stream_to_anthropic(
                     "delta": {"type": "thinking_delta", "thinking": reasoning_piece},
                 },
             )
+            state.thinking_pieces.append(reasoning_piece)
 
         # --- text delta ---
         text_piece = delta.get("content")
@@ -156,6 +161,7 @@ async def convert_openai_stream_to_anthropic(
                     "delta": {"type": "text_delta", "text": text_piece},
                 },
             )
+            state.text_pieces.append(text_piece)
 
         # --- tool call deltas ---
         for tool_call in delta.get("tool_calls") or []:
@@ -233,7 +239,13 @@ async def convert_openai_stream_to_anthropic(
     yield _sse("message_stop", {"type": "message_stop"})
 
     if on_complete is not None:
-        on_complete(state.input_tokens, state.output_tokens, state.finish_reason)
+        on_complete(
+            input_tokens=state.input_tokens,
+            output_tokens=state.output_tokens,
+            finish_reason=state.finish_reason,
+            output_text="".join(state.text_pieces),
+            thinking_text="".join(state.thinking_pieces),
+        )
 
 
 async def error_stream(message: str) -> AsyncIterator[str]:

@@ -139,7 +139,16 @@ def main() -> None:
     stats = r.json()
     assert stats["totals"]["total_requests"] >= 2, stats
     assert stats["totals"]["total_output_tokens"] >= 3, stats
+    # recent log captures the per-request input/output content
+    recent = stats.get("recent") or []
+    assert recent, stats
+    assert "input_preview" in recent[0] and "output_preview" in recent[0], recent[0]
+    assert recent[0]["input_preview"], recent[0]
+    assert recent[0]["output_preview"], recent[0]
     print("  ok  /dashboard/stats ->", stats["totals"])
+    print("  ok  recent[0] content ->",
+          {"in": recent[0]["input_preview"][:40],
+           "out": recent[0]["output_preview"][:40]})
 
     print("\nE2E mock test passed.")
 

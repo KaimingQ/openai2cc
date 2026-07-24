@@ -3,108 +3,249 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OpenAI → Anthropic 接入配置</title>
+<title>OpenAI → Anthropic 接入控制台</title>
 <style>
   :root {
-    --bg: #0f1220; --panel: #171a2b; --panel2: #1e2236; --line: #2a2f4a;
-    --text: #e7e9f2; --muted: #9aa0bd; --accent: #7c8cff;
-    --accent2: #43d6a3; --danger: #ff6b6b; --warn: #ffcf5c; --chip: #262b45;
+    --bg: #0a0b12;
+    --bg-glow1: rgba(124,140,255,.14);
+    --bg-glow2: rgba(67,214,163,.10);
+    --panel: rgba(23,26,43,.72);
+    --panel-solid: #14172a;
+    --panel2: #1b1f36;
+    --line: rgba(255,255,255,.08);
+    --line-strong: rgba(255,255,255,.14);
+    --text: #eef0fb;
+    --muted: #9297b8;
+    --faint: #626790;
+    --accent: #7c8cff;
+    --accent-2: #a78bff;
+    --grad: linear-gradient(135deg, #7c8cff 0%, #a78bff 100%);
+    --ok: #43d6a3;
+    --danger: #ff6b81;
+    --warn: #ffce6a;
+    --chip: rgba(255,255,255,.06);
+    --shadow: 0 18px 50px -18px rgba(0,0,0,.7);
+    --radius: 16px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: var(--bg); color: var(--text); }
-  a { color: var(--accent); }
-  header { display: flex; align-items: center; gap: 16px; padding: 14px 22px;
-    background: var(--panel); border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .tabs { margin-left: auto; display: flex; gap: 6px; }
-  .tab { padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
-    color: var(--muted); border: 1px solid transparent; }
-  .tab.active { background: var(--panel2); color: var(--text); border-color: var(--line); }
-  main { padding: 20px 22px; max-width: 860px; margin: 0 auto; }
-  .hidden { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1100px 620px at 82% -8%, var(--bg-glow1), transparent 60%),
+      radial-gradient(900px 520px at 8% 108%, var(--bg-glow2), transparent 55%),
+      var(--bg);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  ::selection { background: rgba(124,140,255,.35); }
 
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    padding: 18px 20px; margin-bottom: 18px; }
-  .card h2 { font-size: 14px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
-  .step { width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
-    color: #fff; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
-  .card .desc { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
-  input { width: 100%; background: var(--panel2); color: var(--text);
-    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px;
-    font-family: inherit; }
-  input[readonly] { color: var(--accent2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .field-copy { display: flex; gap: 8px; }
+  /* header */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 16px;
+    padding: 15px 26px;
+    background: rgba(10,11,18,.7);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 13px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    background: var(--grad); position: relative;
+    box-shadow: 0 8px 22px -6px rgba(124,140,255,.7);
+    display: grid; place-items: center; font-size: 18px;
+  }
+  .brand h1 { font-size: 15.5px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .brand .sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .status-pill {
+    margin-left: 6px; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--chip); color: var(--muted);
+  }
+  .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .status-pill.ready { color: var(--ok); border-color: rgba(67,214,163,.35); background: rgba(67,214,163,.10); }
+  .status-pill.ready .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(67,214,163,.18); }
+  .status-pill.notready { color: var(--warn); border-color: rgba(255,206,106,.32); background: rgba(255,206,106,.10); }
+  .status-pill.notready .dot { background: var(--warn); box-shadow: 0 0 0 4px rgba(255,206,106,.16); }
+
+  .tabs { margin-left: auto; display: flex; gap: 4px; padding: 4px;
+    background: var(--chip); border: 1px solid var(--line); border-radius: 12px; }
+  .tab { padding: 7px 16px; border-radius: 9px; cursor: pointer; font-size: 13px;
+    color: var(--muted); font-weight: 550; transition: all .18s ease; user-select: none;
+    white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--panel-solid); color: var(--text);
+    box-shadow: 0 2px 10px -4px rgba(0,0,0,.6); }
+
+  main { padding: 30px 26px 70px; max-width: 940px; margin: 0 auto; }
+  .hidden { display: none !important; }
+  .fade { animation: fade .35s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* cards */
+  .card {
+    background: var(--panel); backdrop-filter: blur(12px);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px 24px; margin-bottom: 20px; box-shadow: var(--shadow);
+  }
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .step { width: 26px; height: 26px; border-radius: 9px; background: var(--grad);
+    color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center;
+    box-shadow: 0 6px 16px -6px rgba(124,140,255,.8); flex: none; }
+  .card-head h2 { font-size: 15px; margin: 0; font-weight: 620; }
+  .desc { color: var(--muted); font-size: 12.5px; margin: 0 0 16px 38px; line-height: 1.5; }
+
+  label { display: block; font-size: 11.5px; color: var(--muted); margin: 15px 0 6px;
+    font-weight: 550; letter-spacing: .2px; }
+  .input-wrap { position: relative; }
+  input { width: 100%; background: rgba(0,0,0,.28); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: 11px; padding: 11px 13px;
+    font-size: 13px; font-family: inherit; transition: border-color .16s, box-shadow .16s; outline: none; }
+  input::placeholder { color: var(--faint); }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,140,255,.18); }
+  input[readonly] { color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: rgba(67,214,163,.06); border-color: rgba(67,214,163,.22); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .field-copy { display: flex; gap: 9px; }
   .field-copy input { flex: 1; }
-  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 16px;
-    font-size: 13px; font-weight: 600; white-space: nowrap; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-ghost { background: var(--chip); color: var(--text); }
-  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
-  .actions { display: flex; gap: 10px; margin-top: 16px; }
-  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
-  .status.ok { color: var(--accent2); } .status.err { color: var(--danger); }
-  .banner { border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 18px; }
-  .banner.ready { background: rgba(67,214,163,.12); color: var(--accent2); border: 1px solid rgba(67,214,163,.3); }
-  .banner.notready { background: rgba(255,207,92,.12); color: var(--warn); border: 1px solid rgba(255,207,92,.3); }
-  pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px 14px; overflow-x: auto; font-size: 12.5px; margin: 8px 0 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; position: relative; }
-  .codeblock { position: relative; }
-  .codeblock .copy { position: absolute; top: 8px; right: 8px; padding: 4px 10px; font-size: 11px; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .hint { color: var(--faint); font-size: 11.5px; margin-top: 7px; }
+
+  button { cursor: pointer; border: none; border-radius: 11px; padding: 11px 18px;
+    font-size: 13px; font-weight: 620; white-space: nowrap; font-family: inherit;
+    transition: transform .12s ease, filter .16s ease, background .16s; }
+  button:active { transform: translateY(1px) scale(.99); }
+  .btn-primary { background: var(--grad); color: #fff; box-shadow: 0 10px 24px -10px rgba(124,140,255,.9); }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost { background: var(--chip); color: var(--text); border: 1px solid var(--line-strong); }
+  .btn-ghost:hover { background: rgba(255,255,255,.10); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(255,107,129,.4); }
+  .btn-danger:hover { background: rgba(255,107,129,.10); }
+  .btn-sm { padding: 8px 13px; font-size: 12px; border-radius: 9px; }
+  .actions { display: flex; gap: 11px; margin-top: 20px; }
+  .status { margin-top: 14px; font-size: 12.5px; min-height: 18px; display: flex; align-items: center; gap: 7px; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--danger); }
+
+  .banner { border-radius: 13px; padding: 13px 16px; font-size: 13px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); }
+  .banner.ready { background: rgba(67,214,163,.10); color: var(--ok); border-color: rgba(67,214,163,.28); }
+  .banner.notready { background: rgba(255,206,106,.10); color: var(--warn); border-color: rgba(255,206,106,.28); }
+
+  .codeblock { position: relative; margin-top: 9px; }
+  pre { background: rgba(0,0,0,.34); border: 1px solid var(--line-strong); border-radius: 12px;
+    padding: 14px 16px; overflow-x: auto; font-size: 12.5px; margin: 0; line-height: 1.6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #cfd4ff; }
+  .codeblock .copy { position: absolute; top: 9px; right: 9px; }
+  code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
   /* dashboard */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-  .stat .k { color: var(--muted); font-size: 12px; }
-  .stat .v { font-size: 24px; font-weight: 700; margin-top: 6px; }
-  .stat .v.accent { color: var(--accent2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 14px; }
+  .stat { position: relative; overflow: hidden; background: var(--panel);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 18px 16px;
+    box-shadow: var(--shadow); }
+  .stat::before { content: ""; position: absolute; inset: 0 auto auto 0; width: 100%; height: 3px;
+    background: var(--grad); opacity: .0; transition: opacity .2s; }
+  .stat:hover::before { opacity: .9; }
+  .stat .k { color: var(--muted); font-size: 11.5px; font-weight: 550; display: flex; align-items: center; gap: 6px; }
+  .stat .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+  .stat .v.accent { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat .v.green { color: var(--ok); }
+
+  .section-title { display: flex; align-items: center; gap: 10px; margin: 30px 0 13px; }
+  .section-title h3 { margin: 0; font-size: 14.5px; font-weight: 620; }
+  .section-title .spacer { flex: 1; }
+  .pill { font-size: 11px; padding: 3px 10px; border-radius: 999px; background: var(--chip);
+    color: var(--muted); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 6px; }
+  .pill .live { width: 6px; height: 6px; border-radius: 50%; background: var(--ok);
+    animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 500; }
-  .section-title { display: flex; align-items: center; margin: 22px 0 10px; }
-  .section-title h3 { margin: 0; font-size: 14px; } .section-title .spacer { flex: 1; }
-  .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
-  .ok { color: var(--accent2); } .err { color: var(--danger); }
-  .scroll { max-height: 340px; overflow-y: auto; }
-  .muted { color: var(--muted); font-size: 12px; }
-  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
-    background: var(--accent2); color: #07130d; padding: 8px 16px; border-radius: 8px;
-    font-size: 13px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
-  .toast.show { opacity: 1; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 550; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
+  tr:last-child td { border-bottom: none; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* recent requests (expandable) */
+  .req-list { display: flex; flex-direction: column; gap: 10px; }
+  .req { background: var(--panel-solid); border: 1px solid var(--line);
+    border-radius: 13px; overflow: hidden; transition: border-color .18s, box-shadow .18s; }
+  .req:hover { border-color: var(--line-strong); }
+  .req.open { border-color: rgba(124,140,255,.45); box-shadow: 0 0 0 3px rgba(124,140,255,.10); }
+  .req.err { border-color: rgba(255,107,129,.3); }
+  .req-head { display: flex; align-items: center; gap: 12px; padding: 13px 16px; cursor: pointer; user-select: none; }
+  .req-head .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ok); }
+  .req.err .req-head .dot { background: var(--danger); }
+  .req-model { font-weight: 600; font-size: 13px; }
+  .req-arrow { color: var(--faint); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+  .req-tags { display: flex; gap: 6px; margin-left: 2px; }
+  .tag { font-size: 10.5px; padding: 2px 8px; border-radius: 6px; background: var(--chip);
+    color: var(--muted); border: 1px solid var(--line); }
+  .tag.stream { color: var(--accent-2); border-color: rgba(167,139,255,.3); background: rgba(167,139,255,.10); }
+  .req-meta { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+    display: flex; gap: 14px; align-items: center; }
+  .req-time { color: var(--faint); font-size: 11.5px; }
+  .chev { color: var(--faint); transition: transform .22s ease; font-size: 12px; }
+  .req.open .chev { transform: rotate(180deg); }
+  .req-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 16px;
+    max-height: 0; overflow: hidden; transition: max-height .3s ease, padding .3s ease; }
+  .req.open .req-body { max-height: 720px; padding: 4px 16px 16px; }
+  .io-label { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px; letter-spacing: .3px; }
+  .io-label .bar { width: 3px; height: 12px; border-radius: 2px; background: var(--accent); }
+  .io-label.out .bar { background: var(--ok); }
+  .io pre { max-height: 300px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    background: rgba(0,0,0,.3); font-size: 12px; color: #d6daffcc; }
+  @media (max-width: 720px) { .req-body { grid-template-columns: 1fr; } .req-meta { display: none; } }
+
+  .empty { text-align: center; color: var(--faint); padding: 34px; font-size: 13px; }
+
+  /* toast */
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(12px);
+    background: var(--panel-solid); color: var(--text); padding: 11px 20px; border-radius: 12px;
+    font-size: 13px; font-weight: 600; opacity: 0; transition: all .22s ease; pointer-events: none;
+    border: 1px solid var(--line-strong); box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .ico { color: var(--ok); }
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>OpenAI → Anthropic 接入转换器</h1>
-    <div class="sub">在本地把 OpenAI 格式 API 转换成 Anthropic 格式，供 Claude Code 使用</div>
+  <div class="brand">
+    <div class="logo">⇄</div>
+    <div>
+      <h1>OpenAI → Anthropic 接入转换器</h1>
+      <div class="sub">本地把 OpenAI 兼容 API 转换为 Anthropic 格式，供 Claude Code 使用</div>
+    </div>
   </div>
+  <div class="status-pill notready" id="hdrStatus"><span class="dot"></span><span>加载中…</span></div>
   <div class="tabs">
-    <div class="tab active" data-tab="setup">⚙️ 接入配置</div>
-    <div class="tab" data-tab="dashboard">📊 数据看板</div>
+    <div class="tab active" data-tab="setup">接入配置</div>
+    <div class="tab" data-tab="dashboard">数据看板</div>
   </div>
 </header>
 
 <main>
   <!-- Setup -->
-  <section id="setup">
-    <div id="banner" class="banner notready">正在加载配置…</div>
+  <section id="setup" class="fade">
+    <div id="banner" class="banner notready"><span>正在加载配置…</span></div>
 
     <div class="card">
-      <h2><span class="step">1</span> 填写你的上游 OpenAI 兼容 API</h2>
-      <p class="desc">输入你购买的 API 地址与密钥（OpenAI / Groq / Together / 本地 Ollama / LM Studio 等均可）。</p>
+      <div class="card-head"><span class="step">1</span><h2>填写你的上游 OpenAI 兼容 API</h2></div>
+      <p class="desc">输入你购买的 API 地址与密钥（OpenAI / Groq / Together / DeepSeek / 本地 Ollama、LM Studio 等均可）。</p>
 
       <label>OpenAI Base URL（含 /v1）</label>
-      <input id="baseUrl" placeholder="https://api.openai.com/v1" />
+      <div class="input-wrap"><input id="baseUrl" placeholder="https://api.openai.com/v1" /></div>
 
       <label>OpenAI API Key</label>
-      <input id="apiKey" type="password" placeholder="sk-..." />
+      <div class="input-wrap"><input id="apiKey" type="password" placeholder="sk-..." /></div>
       <div class="hint" id="keyHint"></div>
 
       <div class="row2">
@@ -126,31 +267,31 @@
     </div>
 
     <div class="card">
-      <h2><span class="step">2</span> 把下面信息填入 Claude Code</h2>
+      <div class="card-head"><span class="step">2</span><h2>把下面信息填入 Claude Code</h2></div>
       <p class="desc">对你来说只是换了一个接口地址和密钥。系统已自动为你生成 Anthropic 接入信息。</p>
 
       <label>ANTHROPIC_BASE_URL</label>
       <div class="field-copy">
         <input id="antUrl" readonly />
-        <button class="btn-ghost" data-copy="antUrl">复制</button>
+        <button class="btn-ghost btn-sm" data-copy="antUrl">复制</button>
       </div>
 
       <label>ANTHROPIC_API_KEY</label>
       <div class="field-copy">
         <input id="antKey" readonly />
-        <button class="btn-ghost" data-copy="antKey">复制</button>
-        <button class="btn-danger" id="regenBtn">重新生成</button>
+        <button class="btn-ghost btn-sm" data-copy="antKey">复制</button>
+        <button class="btn-danger btn-sm" id="regenBtn">重新生成</button>
       </div>
 
-      <label style="margin-top:18px">方法 A · 环境变量后启动 Claude Code</label>
+      <label style="margin-top:20px">方法 A · 环境变量后启动 Claude Code</label>
       <div class="codeblock">
-        <button class="btn-ghost copy" data-copy-el="envBlock">复制</button>
+        <button class="btn-ghost btn-sm copy" data-copy-el="envBlock">复制</button>
         <pre id="envBlock"></pre>
       </div>
 
-      <label style="margin-top:14px">方法 B · 写入 <code>~/.claude/settings.json</code></label>
+      <label style="margin-top:16px">方法 B · 写入 <code>~/.claude/settings.json</code></label>
       <div class="codeblock">
-        <button class="btn-ghost copy" data-copy-el="jsonBlock">复制</button>
+        <button class="btn-ghost btn-sm copy" data-copy-el="jsonBlock">复制</button>
         <pre id="jsonBlock"></pre>
       </div>
       <p class="hint">配置完成后，直接运行 <code>claude</code> 即可，所有请求会经由本转换器转发到你的上游模型。</p>
@@ -160,30 +301,35 @@
   <!-- Dashboard -->
   <section id="dashboard" class="hidden">
     <div class="grid" id="statCards"></div>
+
     <div class="section-title">
       <h3>按模型统计</h3><div class="spacer"></div>
-      <span class="pill">每 3 秒自动刷新</span>
+      <span class="pill"><span class="live"></span>每 3 秒自动刷新</span>
     </div>
-    <div class="card"><table id="modelTable">
+    <div class="card" style="padding:6px 8px"><table id="modelTable">
       <thead><tr><th>请求模型</th><th>映射到</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>错误</th></tr></thead>
       <tbody></tbody>
     </table></div>
+
     <div class="section-title">
-      <h3>最近请求</h3><div class="spacer"></div>
-      <button class="btn-danger" id="resetBtn">清空统计</button>
+      <h3>最近请求</h3>
+      <span class="pill" id="recentCount">0 条</span>
+      <div class="spacer"></div>
+      <button class="btn-ghost btn-sm" id="toggleAllBtn">显示全部</button>
+      <button class="btn-danger btn-sm" id="resetBtn">清空统计</button>
     </div>
-    <div class="card scroll"><table id="recentTable">
-      <thead><tr><th>时间</th><th>模型</th><th>输入</th><th>输出</th><th>延迟(ms)</th><th>流式</th><th>状态</th></tr></thead>
-      <tbody></tbody>
-    </table></div>
+    <p class="hint" style="margin:-4px 0 12px">点击任意请求可展开查看完整的输入与输出内容（默认展示最近 10 条）。</p>
+    <div class="req-list" id="recentList"></div>
   </section>
 </main>
 
-<div class="toast" id="toast">已复制</div>
+<div class="toast" id="toast"><span class="ico">✓</span><span id="toastMsg">已复制</span></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 let cfg = {};
+let showAll = false;
+const openSet = new Set();   // remember expanded rows across refreshes (by signature)
 
 /* ---- tabs ---- */
 let dashTimer = null;
@@ -191,17 +337,17 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
   t.classList.add("active");
   const tab = t.dataset.tab;
-  $("setup").classList.toggle("hidden", tab !== "setup");
-  $("dashboard").classList.toggle("hidden", tab !== "dashboard");
+  const setup = $("setup"), dash = $("dashboard");
+  setup.classList.toggle("hidden", tab !== "setup");
+  dash.classList.toggle("hidden", tab !== "dashboard");
+  [setup, dash].forEach(s => { if (!s.classList.contains("hidden")) { s.classList.remove("fade"); void s.offsetWidth; s.classList.add("fade"); } });
   if (tab === "dashboard") { refreshStats(); dashTimer = setInterval(refreshStats, 3000); }
   else if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
 });
 
 /* ---- toast + copy ---- */
-function toast(msg) {
-  const t = $("toast"); t.textContent = msg; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 1400);
-}
+function toast(msg) { $("toastMsg").textContent = msg; const t = $("toast");
+  t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1500); }
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast("已复制到剪贴板"); }
   catch (_) { toast("复制失败，请手动复制"); }
@@ -212,6 +358,8 @@ document.addEventListener("click", (e) => {
   const elb = e.target.closest("[data-copy-el]");
   if (elb) return copyText($(elb.dataset.copyEl).textContent);
 });
+function esc(s) { return (s ?? "").toString()
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 /* ---- config load / render ---- */
 function renderConfig() {
@@ -223,14 +371,15 @@ function renderConfig() {
   $("keyHint").textContent = cfg.openai_api_key_set
     ? `当前已保存密钥：${cfg.openai_api_key_masked}（留空则保持不变）` : "尚未设置密钥";
 
+  const ready = !!cfg.ready;
   const b = $("banner");
-  if (cfg.ready) {
-    b.className = "banner ready";
-    b.textContent = "✓ 上游已配置，转换器就绪，可以在 Claude Code 中使用下方接入信息。";
-  } else {
-    b.className = "banner notready";
-    b.textContent = "⚠ 上游尚未配置完整，请在下方填写 Base URL 与 API Key 并保存。";
-  }
+  b.className = "banner " + (ready ? "ready" : "notready");
+  b.innerHTML = ready
+    ? "<span>✓ 上游已配置，转换器就绪，可在 Claude Code 中使用下方接入信息。</span>"
+    : "<span>⚠ 上游尚未配置完整，请在下方填写 Base URL 与 API Key 并保存。</span>";
+  const hp = $("hdrStatus");
+  hp.className = "status-pill " + (ready ? "ready" : "notready");
+  hp.innerHTML = `<span class="dot"></span><span>${ready ? "就绪" : "未配置"}</span>`;
 
   const url = cfg.anthropic_base_url, key = cfg.anthropic_api_key;
   $("envBlock").textContent =
@@ -239,10 +388,7 @@ function renderConfig() {
     { env: { ANTHROPIC_BASE_URL: url, ANTHROPIC_API_KEY: key } }, null, 2);
 }
 
-async function loadConfig() {
-  cfg = await (await fetch("/config")).json();
-  renderConfig();
-}
+async function loadConfig() { cfg = await (await fetch("/config")).json(); renderConfig(); }
 
 $("saveBtn").onclick = async () => {
   const body = {
@@ -258,8 +404,7 @@ $("saveBtn").onclick = async () => {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     })).json();
-    $("apiKey").value = "";
-    renderConfig();
+    $("apiKey").value = ""; renderConfig();
     s.className = "status ok"; s.textContent = "✓ 已保存";
   } catch (e) { s.className = "status err"; s.textContent = "保存失败: " + e.message; }
 };
@@ -276,43 +421,88 @@ $("testBtn").onclick = async () => {
 $("regenBtn").onclick = async () => {
   if (!confirm("重新生成后旧 Key 立即失效，需在 Claude Code 中更新。确定继续？")) return;
   cfg = await (await fetch("/config/regenerate-key", { method: "POST" })).json();
-  renderConfig();
-  toast("已生成新的 Anthropic Key");
+  renderConfig(); toast("已生成新的 Anthropic Key");
 };
 
 /* ---- dashboard ---- */
-function card(k, v, accent) {
-  return `<div class="stat"><div class="k">${k}</div><div class="v ${accent ? 'accent' : ''}">${v}</div></div>`;
+function card(k, v, cls) {
+  return `<div class="stat"><div class="k">${k}</div><div class="v ${cls || ''}">${v}</div></div>`;
 }
+function sig(r) { return `${r.time}|${r.requested_model}|${r.output_tokens}|${r.latency_ms}`; }
+
+function renderRecent(recent) {
+  const list = showAll ? recent : recent.slice(0, 10);
+  $("recentCount").textContent = recent.length + " 条";
+  if (!list.length) { $("recentList").innerHTML = `<div class="empty">暂无请求记录</div>`; return; }
+  $("recentList").innerHTML = list.map(r => {
+    const id = sig(r), open = openSet.has(id);
+    const ok = r.status === "ok";
+    return `<div class="req ${ok ? "" : "err"} ${open ? "open" : ""}" data-sig="${esc(id)}">
+      <div class="req-head">
+        <span class="dot"></span>
+        <span class="req-model">${esc(r.requested_model)}</span>
+        <span class="req-arrow">→ ${esc(r.mapped_model || "-")}</span>
+        <span class="req-tags">
+          <span class="tag ${r.stream ? "stream" : ""}">${r.stream ? "流式" : "非流式"}</span>
+          ${ok ? "" : `<span class="tag" style="color:var(--danger)">${esc(r.status)}</span>`}
+        </span>
+        <span class="req-meta">
+          <span>↑ ${(r.input_tokens||0).toLocaleString()} · ↓ ${(r.output_tokens||0).toLocaleString()} tok</span>
+          <span>${r.latency_ms} ms</span>
+          <span class="req-time">${esc(r.time)}</span>
+        </span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="req-body">
+        <div class="io"><div class="io-label"><span class="bar"></span>输入</div>
+          <pre>${esc(r.input_preview) || '<span style="color:var(--faint)">（无内容）</span>'}</pre></div>
+        <div class="io"><div class="io-label out"><span class="bar"></span>输出</div>
+          <pre>${esc(r.output_preview) || '<span style="color:var(--faint)">（无内容）</span>'}</pre></div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+document.addEventListener("click", (e) => {
+  const head = e.target.closest(".req-head");
+  if (!head) return;
+  const req = head.parentElement, id = req.dataset.sig;
+  req.classList.toggle("open");
+  if (req.classList.contains("open")) openSet.add(id); else openSet.delete(id);
+});
+
 async function refreshStats() {
   try {
     const d = await (await fetch("/dashboard/stats")).json();
     const t = d.totals || {};
     $("statCards").innerHTML =
-      card("总请求数", t.total_requests || 0) +
-      card("流式请求", t.total_stream || 0) +
-      card("输入 tokens", (t.total_input_tokens || 0).toLocaleString(), true) +
-      card("输出 tokens", (t.total_output_tokens || 0).toLocaleString(), true) +
+      card("总请求数", (t.total_requests || 0).toLocaleString()) +
+      card("流式请求", (t.total_stream || 0).toLocaleString()) +
+      card("输入 tokens", (t.total_input_tokens || 0).toLocaleString(), "accent") +
+      card("输出 tokens", (t.total_output_tokens || 0).toLocaleString(), "accent") +
       card("平均延迟", (t.avg_latency_ms || 0) + " ms") +
-      card("错误数", t.total_errors || 0);
+      card("错误数", (t.total_errors || 0).toLocaleString(), t.total_errors ? "" : "green");
     const mt = $("modelTable").querySelector("tbody");
     mt.innerHTML = Object.entries(d.by_model || {}).map(([m, s]) =>
-      `<tr><td>${m}</td><td class="muted">${s.mapped_model || "-"}</td><td>${s.requests}</td>
-       <td>${(s.input_tokens || 0).toLocaleString()}</td><td>${(s.output_tokens || 0).toLocaleString()}</td>
-       <td class="${s.errors ? 'err' : ''}">${s.errors || 0}</td></tr>`).join("")
-      || `<tr><td colspan="6" class="muted">暂无数据</td></tr>`;
-    const rt = $("recentTable").querySelector("tbody");
-    rt.innerHTML = (d.recent || []).map(r =>
-      `<tr><td class="muted">${r.time}</td><td>${r.requested_model}</td><td>${r.input_tokens}</td>
-       <td>${r.output_tokens}</td><td>${r.latency_ms}</td><td>${r.stream ? "是" : "否"}</td>
-       <td class="${r.status === 'ok' ? 'ok' : 'err'}">${r.status}</td></tr>`).join("")
-      || `<tr><td colspan="7" class="muted">暂无数据</td></tr>`;
+      `<tr><td>${esc(m)}</td><td class="mono">${esc(s.mapped_model || "-")}</td>
+       <td class="num">${s.requests}</td>
+       <td class="num">${(s.input_tokens || 0).toLocaleString()}</td>
+       <td class="num">${(s.output_tokens || 0).toLocaleString()}</td>
+       <td class="num ${s.errors ? '' : 'muted'}" ${s.errors ? 'style="color:var(--danger)"' : ''}>${s.errors || 0}</td></tr>`).join("")
+      || `<tr><td colspan="6" class="empty">暂无数据</td></tr>`;
+    renderRecent(d.recent || []);
   } catch (_) {}
 }
+
+$("toggleAllBtn").onclick = () => {
+  showAll = !showAll;
+  $("toggleAllBtn").textContent = showAll ? "仅显示最近 10 条" : "显示全部";
+  refreshStats();
+};
 $("resetBtn").onclick = async () => {
   if (!confirm("确定清空所有统计数据？")) return;
   await fetch("/dashboard/reset", { method: "POST" });
-  refreshStats();
+  openSet.clear(); refreshStats(); toast("统计已清空");
 };
 
 loadConfig();

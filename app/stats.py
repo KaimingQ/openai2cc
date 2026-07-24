@@ -14,6 +14,17 @@ from pathlib import Path
 from typing import Any, Deque, Dict, List
 
 _RECENT_LIMIT = 200
+_PREVIEW_LIMIT = 4000  # max chars stored per input/output content preview
+
+
+def _clip(text: Any, limit: int = _PREVIEW_LIMIT) -> str:
+    """Coerce to string and clip to ``limit`` chars, marking truncation."""
+    if text is None:
+        return ""
+    s = text if isinstance(text, str) else str(text)
+    if len(s) <= limit:
+        return s
+    return s[:limit] + f"\n…（已截断，共 {len(s)} 字）"
 
 
 class StatsStore:
@@ -71,6 +82,8 @@ class StatsStore:
         latency_ms: float,
         stream: bool,
         status: str,
+        input_preview: str = "",
+        output_preview: str = "",
     ) -> None:
         """Record one completed request."""
         with self._lock:
@@ -110,6 +123,8 @@ class StatsStore:
                     "latency_ms": round(float(latency_ms or 0), 1),
                     "stream": stream,
                     "status": status,
+                    "input_preview": _clip(input_preview),
+                    "output_preview": _clip(output_preview),
                 }
             )
             self._save_locked()
