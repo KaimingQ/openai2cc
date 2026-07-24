@@ -98,6 +98,20 @@ def main() -> None:
     assert "input_tokens" in r.json()
     print("  ok  /v1/messages/count_tokens ->", r.json())
 
+    # web UI is served at root
+    r = httpx.get(f"{base}/", timeout=10)
+    r.raise_for_status()
+    assert "OpenAI → Anthropic" in r.text
+    print("  ok  GET / -> web UI served")
+
+    # dashboard stats reflect the requests we just made
+    r = httpx.get(f"{base}/dashboard/stats", timeout=10)
+    r.raise_for_status()
+    stats = r.json()
+    assert stats["totals"]["total_requests"] >= 2, stats
+    assert stats["totals"]["total_output_tokens"] >= 3, stats
+    print("  ok  /dashboard/stats ->", stats["totals"])
+
     print("\nE2E mock test passed.")
 
 

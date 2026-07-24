@@ -15,6 +15,8 @@ Groq、Together、Ollama、LM Studio 等任意 OpenAI 格式的后端模型。
 
 - 完整实现 Anthropic `POST /v1/messages` 端点（流式 + 非流式）
 - 双向转换：Anthropic ⇄ OpenAI 请求 / 响应格式
+- 🖥️ **本地 Web 控制台**：内置对话调试台 + 数据看板，浏览器直接输入与查看
+- 📊 **数据统计**：实时统计请求数、输入/输出 tokens、平均延迟、错误数，并按模型聚合、记录最近请求
 - 支持 **工具调用 (function calling / tool use)**
 - 支持 **多模态图片** 输入（base64 / url）
 - 支持 **系统提示、温度、top_p、stop 序列、max_tokens** 等参数
@@ -46,6 +48,17 @@ python server.py
 ```
 
 服务默认监听 `http://127.0.0.1:8082`。
+
+## 🖥️ 本地控制台
+
+启动后用浏览器打开 **http://127.0.0.1:8082** 即可看到内置控制台：
+
+- **💬 对话调试**：直接输入消息与后端模型对话（支持流式输出、system 提示、温度、max_tokens），
+  方便快速验证代理是否工作，无需再敲 curl。
+- **📊 数据看板**：实时展示总请求数、流式请求数、累计输入/输出 tokens、平均延迟、错误数；
+  并按模型聚合统计，列出最近请求明细，每 3 秒自动刷新，可一键清空。
+
+统计数据持久化在项目根目录的 `stats.json`（已加入 `.gitignore`），重启后不丢失。
 
 ## ⚙️ 配置（.env）
 
@@ -105,8 +118,11 @@ python tests/e2e_mock.py
 | --- | --- | --- |
 | `POST` | `/v1/messages` | 主聊天端点（流式 / 非流式） |
 | `POST` | `/v1/messages/count_tokens` | 估算输入 token 数 |
+| `GET` | `/` | 本地 Web 控制台（对话调试 + 数据看板） |
+| `GET` | `/info` | 服务信息（JSON） |
+| `GET` | `/dashboard/stats` | 聚合统计数据（JSON） |
+| `POST` | `/dashboard/reset` | 清空统计 |
 | `GET` | `/health` | 健康检查 |
-| `GET` | `/` | 服务信息 |
 
 手动调用示例：
 
@@ -131,6 +147,9 @@ curl http://127.0.0.1:8082/v1/messages \
 │   ├── models.py       # Anthropic 请求 Pydantic 模型
 │   ├── converter.py    # Anthropic ⇄ OpenAI 转换（非流式）
 │   ├── streaming.py    # 流式 SSE 事件转换
+│   ├── stats.py        # 请求统计（持久化到 stats.json）
+│   ├── static/
+│   │   └── index.html  # 本地 Web 控制台（对话调试 + 数据看板）
 │   └── main.py         # FastAPI 应用与端点
 ├── tests/
 │   ├── test_conversion.py

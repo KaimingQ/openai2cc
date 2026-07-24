@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenAI → Anthropic Proxy 控制台</title>
+<style>
+  :root {
+    --bg: #0f1220; --panel: #171a2b; --panel2: #1e2236; --line: #2a2f4a;
+    --text: #e7e9f2; --muted: #9aa0bd; --accent: #7c8cff;
+    --accent2: #43d6a3; --danger: #ff6b6b; --chip: #262b45;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 22px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .tabs { margin-left: auto; display: flex; gap: 6px; }
+  .tab { padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    color: var(--muted); border: 1px solid transparent; }
+  .tab.active { background: var(--panel2); color: var(--text); border-color: var(--line); }
+  main { padding: 18px 22px; max-width: 1100px; margin: 0 auto; }
+  .hidden { display: none !important; }
+
+  /* Playground */
+  .pg { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+    font-family: inherit; }
+  textarea { resize: vertical; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .switch { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 9px 16px;
+    font-size: 13px; font-weight: 600; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: var(--chip); color: var(--text); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .chat { display: flex; flex-direction: column; height: calc(100vh - 150px); }
+  .messages { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { padding: 10px 14px; border-radius: 12px; max-width: 82%; white-space: pre-wrap;
+    word-break: break-word; line-height: 1.5; font-size: 14px; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .msg.assistant { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); }
+  .msg .meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .composer { display: flex; gap: 8px; margin-top: 10px; }
+  .composer textarea { flex: 1; height: 60px; }
+
+  /* Dashboard */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .stat .v.accent { color: var(--accent2); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  .section-title { display: flex; align-items: center; margin: 22px 0 10px; }
+  .section-title h3 { margin: 0; font-size: 14px; }
+  .section-title .spacer { flex: 1; }
+  .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .ok { color: var(--accent2); } .err { color: var(--danger); }
+  .scroll { max-height: 340px; overflow-y: auto; }
+  .muted { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>OpenAI → Anthropic Proxy</h1>
+    <div class="sub" id="cfg">加载配置中…</div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-tab="playground">💬 对话调试</div>
+    <div class="tab" data-tab="dashboard">📊 数据看板</div>
+  </div>
+</header>
+
+<main>
+  <!-- Playground -->
+  <section id="playground" class="pg">
+    <div class="card">
+      <label>模型名称 (Anthropic)</label>
+      <input id="model" value="claude-3-5-sonnet-20241022" />
+      <label>System 提示（可选）</label>
+      <textarea id="system" rows="3" placeholder="You are a helpful assistant."></textarea>
+      <div class="row2">
+        <div><label>max_tokens</label><input id="maxtok" type="number" value="1024" /></div>
+        <div><label>temperature</label><input id="temp" type="number" step="0.1" value="1.0" /></div>
+      </div>
+      <label>x-api-key（若服务端设置了则必填）</label>
+      <input id="apikey" placeholder="留空即可" />
+      <div class="switch"><input type="checkbox" id="stream" checked style="width:auto" /> <span>流式输出 (SSE)</span></div>
+      <div style="margin-top:14px; display:flex; gap:8px;">
+        <button class="btn-ghost" id="clearBtn" style="flex:1">清空对话</button>
+      </div>
+    </div>
+
+    <div class="card chat">
+      <div class="messages" id="messages">
+        <div class="muted">在下方输入内容开始对话，请求会经由本代理转发到你配置的 OpenAI 兼容后端。</div>
+      </div>
+      <div class="composer">
+        <textarea id="prompt" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <button class="btn-primary" id="sendBtn">发送</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard -->
+  <section id="dashboard" class="hidden">
+    <div class="grid" id="statCards"></div>
+
+    <div class="section-title">
+      <h3>按模型统计</h3><div class="spacer"></div>
+      <span class="pill" id="autoTip">每 3 秒自动刷新</span>
+    </div>
+    <div class="card"><table id="modelTable">
+      <thead><tr><th>请求模型</th><th>映射到</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>错误</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+
+    <div class="section-title">
+      <h3>最近请求</h3><div class="spacer"></div>
+      <button class="btn-danger" id="resetBtn">清空统计</button>
+    </div>
+    <div class="card scroll"><table id="recentTable">
+      <thead><tr><th>时间</th><th>模型</th><th>输入</th><th>输出</th><th>延迟(ms)</th><th>流式</th><th>状态</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+/* ---- tab switching ---- */
+let dashTimer = null;
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  const tab = t.dataset.tab;
+  $("playground").classList.toggle("hidden", tab !== "playground");
+  $("dashboard").classList.toggle("hidden", tab !== "dashboard");
+  if (tab === "dashboard") { refreshStats(); dashTimer = setInterval(refreshStats, 3000); }
+  else if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+});
+
+/* ---- load config ---- */
+fetch("/info").then(r => r.json()).then(d => {
+  $("cfg").textContent = `上游: ${d.upstream}  ·  big=${d.big_model}  ·  small=${d.small_model}  ·  v${d.version}`;
+}).catch(() => {});
+
+/* ---- playground chat ---- */
+const history = [];  // {role, content}
+
+function addMessage(role, text) {
+  const el = document.createElement("div");
+  el.className = "msg " + role;
+  el.textContent = text;
+  const empty = $("messages").querySelector(".muted");
+  if (empty) empty.remove();
+  $("messages").appendChild(el);
+  $("messages").scrollTop = $("messages").scrollHeight;
+  return el;
+}
+
+function setMeta(el, meta) {
+  let m = el.querySelector(".meta");
+  if (!m) { m = document.createElement("div"); m.className = "meta"; el.appendChild(m); }
+  m.textContent = meta;
+}
+
+async function send() {
+  const text = $("prompt").value.trim();
+  if (!text) return;
+  $("prompt").value = "";
+  addMessage("user", text);
+  history.push({ role: "user", content: text });
+
+  const body = {
+    model: $("model").value.trim() || "claude-3-5-sonnet-20241022",
+    max_tokens: parseInt($("maxtok").value) || 1024,
+    temperature: parseFloat($("temp").value),
+    messages: history,
+    stream: $("stream").checked,
+  };
+  const sys = $("system").value.trim();
+  if (sys) body.system = sys;
+
+  const headers = { "content-type": "application/json" };
+  const key = $("apikey").value.trim();
+  if (key) headers["x-api-key"] = key;
+
+  const assistantEl = addMessage("assistant", "");
+  const t0 = performance.now();
+  $("sendBtn").disabled = true;
+
+  try {
+    const resp = await fetch("/v1/messages", { method: "POST", headers, body: JSON.stringify(body) });
+    if (!resp.ok && !body.stream) {
+      const e = await resp.text();
+      assistantEl.textContent = "⚠️ " + e; $("sendBtn").disabled = false; return;
+    }
+
+    let full = "";
+    if (body.stream) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.split("\n").find(l => l.startsWith("data:"));
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line.slice(5).trim());
+            if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
+              full += data.delta.text;
+              assistantEl.textContent = full;
+              $("messages").scrollTop = $("messages").scrollHeight;
+            } else if (data.type === "error") {
+              full += "⚠️ " + (data.error?.message || "error");
+              assistantEl.textContent = full;
+            }
+          } catch (_) {}
+        }
+      }
+    } else {
+      const data = await resp.json();
+      full = (data.content || []).map(b => b.type === "text" ? b.text
+        : b.type === "tool_use" ? `\n[tool_use ${b.name}] ${JSON.stringify(b.input)}` : "").join("");
+      assistantEl.textContent = full;
+    }
+
+    history.push({ role: "assistant", content: full });
+    setMeta(assistantEl, `${((performance.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (err) {
+    assistantEl.textContent = "⚠️ 请求失败: " + err.message;
+  } finally {
+    $("sendBtn").disabled = false;
+  }
+}
+
+$("sendBtn").onclick = send;
+$("prompt").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$("clearBtn").onclick = () => {
+  history.length = 0;
+  $("messages").innerHTML = '<div class="muted">对话已清空。</div>';
+};
+
+/* ---- dashboard ---- */
+function card(k, v, accent) {
+  return `<div class="stat"><div class="k">${k}</div><div class="v ${accent ? 'accent' : ''}">${v}</div></div>`;
+}
+
+async function refreshStats() {
+  try {
+    const d = await (await fetch("/dashboard/stats")).json();
+    const t = d.totals || {};
+    $("statCards").innerHTML =
+      card("总请求数", t.total_requests || 0) +
+      card("流式请求", t.total_stream || 0) +
+      card("输入 tokens", (t.total_input_tokens || 0).toLocaleString(), true) +
+      card("输出 tokens", (t.total_output_tokens || 0).toLocaleString(), true) +
+      card("平均延迟", (t.avg_latency_ms || 0) + " ms") +
+      card("错误数", t.total_errors || 0);
+
+    const mt = $("modelTable").querySelector("tbody");
+    mt.innerHTML = Object.entries(d.by_model || {}).map(([m, s]) =>
+      `<tr><td>${m}</td><td class="muted">${s.mapped_model || "-"}</td><td>${s.requests}</td>
+       <td>${(s.input_tokens || 0).toLocaleString()}</td><td>${(s.output_tokens || 0).toLocaleString()}</td>
+       <td class="${s.errors ? 'err' : ''}">${s.errors || 0}</td></tr>`).join("")
+      || `<tr><td colspan="6" class="muted">暂无数据</td></tr>`;
+
+    const rt = $("recentTable").querySelector("tbody");
+    rt.innerHTML = (d.recent || []).map(r =>
+      `<tr><td class="muted">${r.time}</td><td>${r.requested_model}</td><td>${r.input_tokens}</td>
+       <td>${r.output_tokens}</td><td>${r.latency_ms}</td><td>${r.stream ? "是" : "否"}</td>
+       <td class="${r.status === 'ok' ? 'ok' : 'err'}">${r.status}</td></tr>`).join("")
+      || `<tr><td colspan="7" class="muted">暂无数据</td></tr>`;
+  } catch (_) {}
+}
+
+$("resetBtn").onclick = async () => {
+  if (!confirm("确定清空所有统计数据？")) return;
+  await fetch("/dashboard/reset", { method: "POST" });
+  refreshStats();
+};
+</script>
+</body>
+</html>

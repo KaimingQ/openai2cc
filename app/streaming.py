@@ -14,7 +14,7 @@ tool_use blocks.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 from .converter import map_finish_reason
 
@@ -33,6 +33,7 @@ class _StreamState:
         self.text_started = False
         # OpenAI tool_call index -> Anthropic content block index
         self.tool_index_map: Dict[int, int] = {}
+        self.input_tokens = 0
         self.output_tokens = 0
         self.finish_reason: Optional[str] = None
 
@@ -41,8 +42,13 @@ async def convert_openai_stream_to_anthropic(
     openai_lines: AsyncIterator[str],
     original_model: str,
     message_id: str,
+    on_complete: Optional[Callable[[int, int, Optional[str]], None]] = None,
 ) -> AsyncIterator[str]:
-    """Yield Anthropic SSE strings translated from an OpenAI SSE line stream."""
+    """Yield Anthropic SSE strings translated from an OpenAI SSE line stream.
+
+    ``on_complete`` (if given) is called once at the end with
+    ``(input_tokens, output_tokens, finish_reason)`` for statistics.
+    """
     state = _StreamState()
 
     # 1. message_start
@@ -78,8 +84,11 @@ async def convert_openai_stream_to_anthropic(
 
         # Usage may arrive on a chunk with empty choices (stream_options).
         usage = chunk.get("usage")
-        if usage and usage.get("completion_tokens") is not None:
-            state.output_tokens = usage.get("completion_tokens", state.output_tokens)
+        if usage:
+            if usage.get("completion_tokens") is not None:
+                state.output_tokens = usage.get("completion_tokens", state.output_tokens)
+            if usage.get("prompt_tokens") is not None:
+                state.input_tokens = usage.get("prompt_tokens", state.input_tokens)
 
         choices = chunk.get("choices") or []
         if not choices:
@@ -179,6 +188,9 @@ async def convert_openai_stream_to_anthropic(
 
     # 4. message_stop
     yield _sse("message_stop", {"type": "message_stop"})
+
+    if on_complete is not None:
+        on_complete(state.input_tokens, state.output_tokens, state.finish_reason)
 
 
 async def error_stream(message: str) -> AsyncIterator[str]:
