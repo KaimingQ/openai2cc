@@ -165,6 +165,29 @@ def test_response_conversion_reasoning() -> None:
     assert result["stop_reason"] == "end_turn"
 
 
+def test_response_conversion_inline_think() -> None:
+    # Models like MiniMax embed reasoning inline as <think>...</think> in
+    # ``content``; the tags must be stripped and surfaced as a thinking block.
+    openai_resp = {
+        "id": "chatcmpl-t",
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>reasoning here</think>\n\nFinal answer.",
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 9},
+    }
+    result = openai_to_anthropic_response(openai_resp, "claude-3-5-sonnet")
+    assert result["content"][0] == {"type": "thinking", "thinking": "reasoning here"}
+    assert result["content"][1] == {"type": "text", "text": "Final answer."}
+    # No stray tags anywhere in the visible output.
+    assert "<think>" not in json.dumps(result)
+
+
 def test_finish_reason_map() -> None:
     assert map_finish_reason("stop") == "end_turn"
     assert map_finish_reason("length") == "max_tokens"
@@ -234,6 +257,63 @@ def test_streaming_reasoning() -> None:
     # thinking block starts at index 0, text at index 1
     assert '"content_block_start", "index": 0' in joined
     assert '"content_block_start", "index": 1' in joined
+
+
+def test_streaming_inline_think() -> None:
+    # Inline <think> tags arriving via ``content`` deltas must be routed to a
+    # thinking block, never leaked into visible text.
+    async def fake_lines():
+        chunks = [
+            {"choices": [{"delta": {"content": "<think>musing</think>"}, "finish_reason": None}]},
+            {"choices": [{"delta": {"content": "Answer"}, "finish_reason": None}]},
+            {"choices": [{"delta": {}, "finish_reason": "stop"}],
+             "usage": {"completion_tokens": 3}},
+        ]
+        for c in chunks:
+            yield f"data: {json.dumps(c)}"
+        yield "data: [DONE]"
+
+    async def run():
+        events = []
+        async for e in convert_openai_stream_to_anthropic(
+            fake_lines(), "claude-3-5-sonnet", "msg_test"
+        ):
+            events.append(e)
+        return events
+
+    joined = "".join(asyncio.run(run()))
+    assert '"type": "thinking_delta", "thinking": "musing"' in joined
+    assert "Answer" in joined
+    # Tags themselves must never appear in any emitted event.
+    assert "<think>" not in joined and "</think>" not in joined
+
+
+def test_streaming_inline_think_split_across_chunks() -> None:
+    # The <think> / </think> tags are split character-by-character across
+    # chunks; the splitter must still consume them without leaking fragments.
+    raw = "<think>hidden</think>visible"
+    async def fake_lines():
+        for ch in raw:
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': ch}, 'finish_reason': None}]})}"
+        yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 2}})}"
+        yield "data: [DONE]"
+
+    async def run():
+        events = []
+        async for e in convert_openai_stream_to_anthropic(
+            fake_lines(), "claude-3-5-sonnet", "msg_test"
+        ):
+            events.append(e)
+        return events
+
+    joined = "".join(asyncio.run(run()))
+    assert "<think>" not in joined and "</think>" not in joined
+    # Reassemble emitted deltas: thinking must equal "hidden", text "visible".
+    import re as _re
+    thinks = _re.findall(r'"thinking_delta", "thinking": ("(?:[^"\\]|\\.)*")', joined)
+    texts = _re.findall(r'"text_delta", "text": ("(?:[^"\\]|\\.)*")', joined)
+    assert "".join(json.loads(t) for t in thinks) == "hidden"
+    assert "".join(json.loads(t) for t in texts) == "visible"
 
 
 def _run_all() -> None:

@@ -19,7 +19,7 @@
 - 🔐 **自动鉴权**：自动生成 Anthropic Key 并对 `/v1/*` 鉴权，可一键重生
 - 完整实现 Anthropic `POST /v1/messages` 端点（流式 + 非流式）
 - 双向转换：Anthropic ⇄ OpenAI 请求 / 响应格式，支持工具调用、多模态图片
-- 🧠 **推理模型支持**：自动把上游的 `reasoning_content`（如 DeepSeek 思维链）转换成 Anthropic `thinking` 块（流式 + 非流式）
+- 🧠 **推理模型支持**：自动把上游的思维链转换成 Anthropic `thinking` 块（流式 + 非流式），兼容两种常见形式——独立的 `reasoning_content` 字段（如 DeepSeek），以及内嵌在正文里的 `<think>...</think>` 标签（如 MiniMax），后者会被剥离标签、不再污染可见回答
 - 📊 **数据看板**：实时统计请求数、输入/输出 tokens、平均延迟、错误数，按模型聚合；可展开查看最近请求的**完整输入与输出内容**（含思维链）
 - 流式 SSE 事件完整还原；模型分层映射（sonnet/opus → 大模型，haiku → 小模型）
 - 零数据库、纯本地运行

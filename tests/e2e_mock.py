@@ -24,6 +24,10 @@ os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:9099/v1"
 os.environ["OPENAI_API_KEY"] = "mock-key"
 os.environ["PORT"] = "8099"
 os.environ["CONFIG_PATH"] = os.path.join(tempfile.gettempdir(), "o2a_e2e_config.json")
+# Never route localhost traffic through a developer's system/HTTP proxy: the
+# proxy app calls the mock upstream on 127.0.0.1 and a proxy would 503 it.
+os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+os.environ["no_proxy"] = "127.0.0.1,localhost"
 if os.path.exists(os.environ["CONFIG_PATH"]):
     os.remove(os.environ["CONFIG_PATH"])
 
@@ -72,8 +76,13 @@ def main() -> None:
 
     base = "http://127.0.0.1:8099"
 
+    # Talk to the local servers directly. ``trust_env=False`` prevents httpx
+    # from routing localhost through any system/HTTP proxy the developer may
+    # have enabled (which would otherwise return an empty-body 503).
+    client = httpx.Client(trust_env=False, timeout=10)
+
     # the setup page auto-generates an Anthropic key that /v1 now requires
-    cfg = httpx.get(f"{base}/config", timeout=10).json()
+    cfg = client.get(f"{base}/config").json()
     assert cfg["anthropic_api_key"].startswith("sk-ant-proxy-"), cfg
     assert cfg["anthropic_base_url"].startswith("http://"), cfg
     assert cfg["ready"] is True, cfg
@@ -82,9 +91,9 @@ def main() -> None:
     print("  ok  /config -> anthropic key generated, upstream ready")
 
     # missing key must be rejected
-    r = httpx.post(f"{base}/v1/messages", json={
+    r = client.post(f"{base}/v1/messages", json={
         "model": "claude-3-5-sonnet", "max_tokens": 10,
-        "messages": [{"role": "user", "content": "hi"}]}, timeout=10)
+        "messages": [{"role": "user", "content": "hi"}]})
     assert r.status_code == 401, r.status_code
     print("  ok  /v1/messages without key -> 401")
 
@@ -95,7 +104,7 @@ def main() -> None:
     }
 
     # non-streaming
-    r = httpx.post(f"{base}/v1/messages", json=payload, headers=hdr, timeout=10)
+    r = client.post(f"{base}/v1/messages", json=payload, headers=hdr)
     r.raise_for_status()
     data = r.json()
     assert data["type"] == "message", data
@@ -105,8 +114,8 @@ def main() -> None:
 
     # streaming
     payload["stream"] = True
-    with httpx.stream("POST", f"{base}/v1/messages", json=payload,
-                      headers=hdr, timeout=10) as s:
+    with client.stream("POST", f"{base}/v1/messages", json=payload,
+                        headers=hdr) as s:
         events = "".join(chunk for chunk in s.iter_text())
     assert "message_start" in events
     assert "text_delta" in events
@@ -115,26 +124,26 @@ def main() -> None:
     print("  ok  streaming /v1/messages -> received full SSE sequence")
 
     # count_tokens
-    r = httpx.post(f"{base}/v1/messages/count_tokens", json=payload,
-                   headers=hdr, timeout=10)
+    r = client.post(f"{base}/v1/messages/count_tokens", json=payload,
+                    headers=hdr)
     r.raise_for_status()
     assert "input_tokens" in r.json()
     print("  ok  /v1/messages/count_tokens ->", r.json())
 
     # upstream connectivity test endpoint
-    r = httpx.post(f"{base}/config/test", timeout=10)
+    r = client.post(f"{base}/config/test")
     r.raise_for_status()
     assert r.json()["ok"] is True, r.json()
     print("  ok  /config/test ->", r.json()["message"])
 
     # web UI is served at root
-    r = httpx.get(f"{base}/", timeout=10)
+    r = client.get(f"{base}/")
     r.raise_for_status()
     assert "OpenAI → Anthropic" in r.text
     print("  ok  GET / -> web setup page served")
 
     # dashboard stats reflect the requests we just made
-    r = httpx.get(f"{base}/dashboard/stats", timeout=10)
+    r = client.get(f"{base}/dashboard/stats")
     r.raise_for_status()
     stats = r.json()
     assert stats["totals"]["total_requests"] >= 2, stats

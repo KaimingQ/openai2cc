@@ -13,11 +13,43 @@ Streaming translation lives in :mod:`app.streaming`.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import settings
 from .models import MessagesRequest
 from .runtime_config import config
+
+# Some OpenAI-compatible reasoning models (e.g. MiniMax) embed their
+# chain-of-thought inline as ``<think>...</think>`` inside the ``content``
+# field instead of using a separate ``reasoning_content`` field. We strip
+# those tags out of the visible answer and surface them as thinking instead.
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def split_think(text: str) -> Tuple[str, str]:
+    """Split ``<think>...</think>`` out of ``text``.
+
+    Returns ``(thinking_text, visible_text)``. Handles multiple blocks and an
+    unclosed trailing ``<think>`` (e.g. truncated by max_tokens).
+    """
+    if not text or THINK_OPEN not in text:
+        return "", text
+    thinking_parts: List[str] = []
+
+    def _grab(match: "re.Match[str]") -> str:
+        thinking_parts.append(match.group(1))
+        return ""
+
+    visible = _THINK_RE.sub(_grab, text)
+    # An unclosed <think> means everything after it is still reasoning.
+    if THINK_OPEN in visible:
+        idx = visible.index(THINK_OPEN)
+        thinking_parts.append(visible[idx + len(THINK_OPEN):])
+        visible = visible[:idx]
+    return "".join(thinking_parts).strip(), visible.strip()
 
 # --- finish reason mapping (OpenAI -> Anthropic) ---------------------------
 _FINISH_REASON_MAP = {
@@ -274,22 +306,35 @@ def openai_to_anthropic_response(
 
     content_blocks: List[Dict[str, Any]] = []
 
-    # Reasoning models (e.g. DeepSeek) expose chain-of-thought separately;
-    # surface it as an Anthropic ``thinking`` block ahead of the answer.
+    # Reasoning models expose chain-of-thought either via a separate
+    # ``reasoning_content`` field (e.g. DeepSeek) or inline as
+    # ``<think>...</think>`` inside ``content`` (e.g. MiniMax). Collect both
+    # and surface them as a single Anthropic ``thinking`` block ahead of the
+    # answer, keeping the tags out of the visible text.
+    thinking_text = ""
     reasoning = message.get("reasoning_content")
-    if isinstance(reasoning, str) and reasoning:
-        content_blocks.append({"type": "thinking", "thinking": reasoning})
+    if isinstance(reasoning, str) and reasoning.strip():
+        thinking_text = reasoning.strip()
 
     text = message.get("content")
     if isinstance(text, str) and text:
-        content_blocks.append({"type": "text", "text": text})
-    elif isinstance(text, list):
-        # Some providers return content parts; extract text.
-        for part in text:
-            if isinstance(part, dict) and part.get("type") in ("text", "output_text"):
-                content_blocks.append(
-                    {"type": "text", "text": part.get("text", "")}
-                )
+        embedded, visible = split_think(text)
+        if embedded:
+            thinking_text = f"{thinking_text}\n{embedded}".strip() if thinking_text else embedded
+        if thinking_text:
+            content_blocks.append({"type": "thinking", "thinking": thinking_text})
+        if visible:
+            content_blocks.append({"type": "text", "text": visible})
+    else:
+        if thinking_text:
+            content_blocks.append({"type": "thinking", "thinking": thinking_text})
+        if isinstance(text, list):
+            # Some providers return content parts; extract text.
+            for part in text:
+                if isinstance(part, dict) and part.get("type") in ("text", "output_text"):
+                    content_blocks.append(
+                        {"type": "text", "text": part.get("text", "")}
+                    )
 
     for tool_call in message.get("tool_calls") or []:
         fn = tool_call.get("function", {}) or {}
