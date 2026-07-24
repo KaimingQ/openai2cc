@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from .config import settings
 from .models import MessagesRequest
+from .runtime_config import config
 
 # --- finish reason mapping (OpenAI -> Anthropic) ---------------------------
 _FINISH_REASON_MAP = {
@@ -235,7 +236,7 @@ def anthropic_to_openai_request(req: MessagesRequest) -> Dict[str, Any]:
         max_tokens = min(max_tokens, settings.max_tokens_limit)
 
     body: Dict[str, Any] = {
-        "model": settings.map_model(req.model),
+        "model": config.map_model(req.model),
         "messages": openai_messages,
         "max_tokens": max_tokens,
         "stream": req.stream,
@@ -272,6 +273,12 @@ def openai_to_anthropic_response(
     message = choice.get("message", {}) or {}
 
     content_blocks: List[Dict[str, Any]] = []
+
+    # Reasoning models (e.g. DeepSeek) expose chain-of-thought separately;
+    # surface it as an Anthropic ``thinking`` block ahead of the answer.
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning:
+        content_blocks.append({"type": "thinking", "thinking": reasoning})
 
     text = message.get("content")
     if isinstance(text, str) and text:

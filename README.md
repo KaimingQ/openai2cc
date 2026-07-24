@@ -1,8 +1,9 @@
 # OpenAI → Anthropic Proxy
 
 将任意 **OpenAI 兼容** 的 LLM API 转换为 **Anthropic Messages API** 格式的本地代理服务器。
-运行后即可让 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 接入 OpenAI、
-Groq、Together、Ollama、LM Studio 等任意 OpenAI 格式的后端模型。
+适用于：**你购买的 API 只支持 OpenAI 格式，但想用 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)**。
+在本地运行本服务，在网页上填入你的 OpenAI 接口与 Key，系统会生成一个 Anthropic 格式的
+接口地址与 Key，把它们填入 Claude Code 即可——对你而言只是换了一个地址。
 
 ```
 ┌─────────────┐   Anthropic 格式    ┌──────────────┐   OpenAI 格式    ┌──────────────┐
@@ -13,52 +14,48 @@ Groq、Together、Ollama、LM Studio 等任意 OpenAI 格式的后端模型。
 
 ## ✨ 特性
 
+- 🖥️ **网页接入配置**：浏览器填写 OpenAI 接口与 Key，自动生成 Anthropic 接口地址与 Key，一键复制到 Claude Code
+- ⚙️ **运行时配置**：在网页修改上游地址/密钥/模型映射并立即生效，持久化到 `config.json`，无需重启
+- 🔐 **自动鉴权**：自动生成 Anthropic Key 并对 `/v1/*` 鉴权，可一键重生
 - 完整实现 Anthropic `POST /v1/messages` 端点（流式 + 非流式）
-- 双向转换：Anthropic ⇄ OpenAI 请求 / 响应格式
-- 🖥️ **本地 Web 控制台**：内置对话调试台 + 数据看板，浏览器直接输入与查看
-- 📊 **数据统计**：实时统计请求数、输入/输出 tokens、平均延迟、错误数，并按模型聚合、记录最近请求
-- 支持 **工具调用 (function calling / tool use)**
-- 支持 **多模态图片** 输入（base64 / url）
-- 支持 **系统提示、温度、top_p、stop 序列、max_tokens** 等参数
-- 流式 SSE 事件完整还原（`message_start` → `content_block_*` → `message_delta` → `message_stop`）
-- 模型分层映射：Claude 的 sonnet/opus/haiku 自动映射到你配置的大小模型
-- `count_tokens` 端点估算
-- 零数据库、纯本地运行、单文件配置
+- 双向转换：Anthropic ⇄ OpenAI 请求 / 响应格式，支持工具调用、多模态图片
+- 🧠 **推理模型支持**：自动把上游的 `reasoning_content`（如 DeepSeek 思维链）转换成 Anthropic `thinking` 块（流式 + 非流式）
+- 📊 **数据看板**：实时统计请求数、输入/输出 tokens、平均延迟、错误数，按模型聚合
+- 流式 SSE 事件完整还原；模型分层映射（sonnet/opus → 大模型，haiku → 小模型）
+- 零数据库、纯本地运行
 
 ## 🚀 快速开始
 
-### 1. 一键启动（推荐）
+### 1. 启动服务
 
 ```bash
-./run.sh
+./run.sh          # 自动建虚拟环境、装依赖并启动
+# 或手动：
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && python server.py
 ```
 
-脚本会自动创建虚拟环境、安装依赖、复制 `.env`，然后启动服务。
-首次运行后请编辑生成的 `.env` 填入你的后端信息。
+### 2. 用浏览器打开控制台 http://127.0.0.1:8082
 
-### 2. 手动启动
+1. 在 **⚙️ 接入配置** 页填入你的 **OpenAI Base URL** 与 **API Key**，根据需要调整大/小模型，点“保存配置”（可先“测试连接”）。
+2. 页面会自动生成一个 **ANTHROPIC_BASE_URL** 与 **ANTHROPIC_API_KEY**。
+3. 把这两个值填入 Claude Code 即可：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-cp .env.example .env   # 编辑填入你的 API Key / Base URL
-python server.py
+export ANTHROPIC_BASE_URL="http://127.0.0.1:8082"
+export ANTHROPIC_API_KEY="页面上生成的 sk-ant-proxy-..."
+claude
 ```
 
-服务默认监听 `http://127.0.0.1:8082`。
+或写入 `~/.claude/settings.json`（页面提供一键复制）：
 
-## 🖥️ 本地控制台
+```json
+{ "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8082", "ANTHROPIC_API_KEY": "sk-ant-proxy-..." } }
+```
 
-启动后用浏览器打开 **http://127.0.0.1:8082** 即可看到内置控制台：
+之后 Claude Code 的所有请求都会经由本转换器转发到你配置的 OpenAI 兼容后端。
 
-- **💬 对话调试**：直接输入消息与后端模型对话（支持流式输出、system 提示、温度、max_tokens），
-  方便快速验证代理是否工作，无需再敲 curl。
-- **📊 数据看板**：实时展示总请求数、流式请求数、累计输入/输出 tokens、平均延迟、错误数；
-  并按模型聚合统计，列出最近请求明细，每 3 秒自动刷新，可一键清空。
-
-统计数据持久化在项目根目录的 `stats.json`（已加入 `.gitignore`），重启后不丢失。
+> 提示：上游地址也可直接写在 `.env`（`cp .env.example .env`）作为启动默认值；网页保存的 `config.json` 会覆盖它。
 
 ## ⚙️ 配置（.env）
 
@@ -116,20 +113,23 @@ python tests/e2e_mock.py
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/v1/messages` | 主聊天端点（流式 / 非流式） |
+| `POST` | `/v1/messages` | 主聊天端点（流式 / 非流式，需携带 Anthropic Key） |
 | `POST` | `/v1/messages/count_tokens` | 估算输入 token 数 |
-| `GET` | `/` | 本地 Web 控制台（对话调试 + 数据看板） |
+| `GET` | `/` | 本地接入配置页 + 数据看板 |
 | `GET` | `/info` | 服务信息（JSON） |
+| `GET`/`POST` | `/config` | 读取 / 保存运行时配置 |
+| `POST` | `/config/regenerate-key` | 重新生成 Anthropic Key |
+| `POST` | `/config/test` | 测试上游连接 |
 | `GET` | `/dashboard/stats` | 聚合统计数据（JSON） |
 | `POST` | `/dashboard/reset` | 清空统计 |
 | `GET` | `/health` | 健康检查 |
 
-手动调用示例：
+手动调用示例（`x-api-key` 填页面生成的 Anthropic Key）：
 
 ```bash
 curl http://127.0.0.1:8082/v1/messages \
   -H "content-type: application/json" \
-  -H "x-api-key: any-value" \
+  -H "x-api-key: sk-ant-proxy-..." \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "max_tokens": 256,
@@ -143,13 +143,14 @@ curl http://127.0.0.1:8082/v1/messages \
 .
 ├── app/
 │   ├── __init__.py
-│   ├── config.py       # 环境变量配置与模型映射
+│   ├── config.py       # 静态服务设置（host/port/超时等，来自环境变量）
+│   ├── runtime_config.py  # 运行时配置（上游/密钥/模型映射/Anthropic Key，持久化 config.json）
 │   ├── models.py       # Anthropic 请求 Pydantic 模型
 │   ├── converter.py    # Anthropic ⇄ OpenAI 转换（非流式）
 │   ├── streaming.py    # 流式 SSE 事件转换
 │   ├── stats.py        # 请求统计（持久化到 stats.json）
 │   ├── static/
-│   │   └── index.html  # 本地 Web 控制台（对话调试 + 数据看板）
+│   │   └── index.html  # 本地接入配置页 + 数据看板
 │   └── main.py         # FastAPI 应用与端点
 ├── tests/
 │   ├── test_conversion.py

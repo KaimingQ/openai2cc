@@ -26,6 +26,7 @@ from .converter import (
     openai_to_anthropic_response,
 )
 from .models import MessagesRequest, TokenCountRequest
+from .runtime_config import config
 from .stats import stats
 from .streaming import convert_openai_stream_to_anthropic
 
@@ -41,20 +42,21 @@ _STATIC_DIR = Path(__file__).parent / "static"
 
 
 def _check_auth(x_api_key: str | None, authorization: str | None) -> None:
-    """Optionally enforce the incoming Anthropic key when configured."""
-    if not settings.anthropic_api_key:
+    """Enforce the generated Anthropic key on the proxied /v1 endpoints."""
+    expected = config.anthropic_api_key
+    if not expected:
         return
     provided = x_api_key
     if not provided and authorization and authorization.lower().startswith("bearer "):
         provided = authorization[len("bearer "):].strip()
-    if provided != settings.anthropic_api_key:
+    if provided != expected:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def _upstream_headers() -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
-    if settings.openai_api_key:
-        headers["Authorization"] = f"Bearer {settings.openai_api_key}"
+    if config.openai_api_key:
+        headers["Authorization"] = f"Bearer {config.openai_api_key}"
     return headers
 
 
@@ -72,9 +74,10 @@ async def info() -> Dict[str, Any]:
     return {
         "name": "openai-to-anthropic-proxy",
         "version": __version__,
-        "upstream": settings.base_url,
-        "big_model": settings.big_model,
-        "small_model": settings.small_model,
+        "upstream": config.base_url,
+        "big_model": config.big_model,
+        "small_model": config.small_model,
+        "ready": config.is_ready(),
         "endpoints": ["/v1/messages", "/v1/messages/count_tokens", "/health"],
     }
 
@@ -84,14 +87,63 @@ async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
+# --- setup / configuration API --------------------------------------------
+@app.get("/config")
+async def get_config() -> Dict[str, Any]:
+    """Current configuration for the setup page (upstream key masked)."""
+    return config.public_dict()
+
+
+@app.post("/config")
+async def save_config(request: Request) -> Dict[str, Any]:
+    """Persist edited upstream settings from the setup page."""
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid body: {exc}")
+    config.update(body if isinstance(body, dict) else {})
+    return config.public_dict()
+
+
+@app.post("/config/regenerate-key")
+async def regenerate_key() -> Dict[str, Any]:
+    """Generate a fresh Anthropic API key."""
+    config.regenerate_anthropic_key()
+    return config.public_dict()
+
+
+@app.post("/config/test")
+async def test_upstream() -> Dict[str, Any]:
+    """Send a tiny request upstream to verify the URL + key work."""
+    if not config.is_ready():
+        return {"ok": False, "message": "请先填写上游 Base URL 与 API Key"}
+    url = f"{config.base_url}/chat/completions"
+    probe = {
+        "model": config.big_model,
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "ping"}],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(url, json=probe, headers=_upstream_headers())
+    except httpx.RequestError as exc:
+        return {"ok": False, "message": f"连接失败: {exc}"}
+    if resp.status_code < 400:
+        return {"ok": True, "message": f"连接成功 (HTTP {resp.status_code})"}
+    return {
+        "ok": False,
+        "message": f"上游返回 HTTP {resp.status_code}: {resp.text[:200]}",
+    }
+
+
 @app.get("/dashboard/stats")
 async def dashboard_stats() -> Dict[str, Any]:
     """Aggregated request statistics for the dashboard."""
     return {
         "config": {
-            "upstream": settings.base_url,
-            "big_model": settings.big_model,
-            "small_model": settings.small_model,
+            "upstream": config.base_url,
+            "big_model": config.big_model,
+            "small_model": config.small_model,
         },
         **stats.snapshot(),
     }
@@ -120,7 +172,7 @@ async def create_message(
         raise HTTPException(status_code=400, detail=f"Invalid request: {exc}")
 
     openai_body = anthropic_to_openai_request(anthropic_req)
-    url = f"{settings.base_url}/chat/completions"
+    url = f"{config.base_url}/chat/completions"
     mapped_model = openai_body["model"]
     logger.info(
         "%s -> %s (stream=%s)",

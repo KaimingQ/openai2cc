@@ -4,22 +4,19 @@ from __future__ import annotations
 import uvicorn
 
 from app.config import settings
+from app.runtime_config import config
 
 
 def main() -> None:
-    print("=" * 60)
+    print("=" * 64)
     print(" OpenAI → Anthropic Proxy")
-    print("=" * 60)
-    print(f" Listening : http://{settings.host}:{settings.port}")
-    print(f" Upstream  : {settings.base_url}")
-    print(f" Big model : {settings.big_model}")
-    print(f" Small     : {settings.small_model}")
-    print("-" * 60)
-    print(" Point Claude Code at this server, e.g.:")
-    print(f"   export ANTHROPIC_BASE_URL=http://{settings.host}:{settings.port}")
-    print("   export ANTHROPIC_API_KEY=any-value")
-    print("   claude")
-    print("=" * 60)
+    print("=" * 64)
+    print(f" 控制台 (浏览器打开) : http://{settings.host}:{settings.port}")
+    print("-" * 64)
+    print(" 在控制台填入你的 OpenAI 兼容接口与 Key，然后将下方信息填入 Claude Code：")
+    print(f"   ANTHROPIC_BASE_URL = {config.anthropic_base_url()}")
+    print(f"   ANTHROPIC_API_KEY  = {config.anthropic_api_key}")
+    print("=" * 64)
 
     uvicorn.run(
         "app.main:app",

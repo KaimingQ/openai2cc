@@ -8,8 +8,15 @@ import asyncio
 import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Use an isolated (non-existent) config path so tests are deterministic and
+# never read/write a real config.json.
+os.environ["CONFIG_PATH"] = os.path.join(tempfile.gettempdir(), "o2a_test_config.json")
+if os.path.exists(os.environ["CONFIG_PATH"]):
+    os.remove(os.environ["CONFIG_PATH"])
 
 from app.converter import (  # noqa: E402
     anthropic_to_openai_request,
@@ -134,6 +141,30 @@ def test_response_conversion_tool_call() -> None:
     assert result["stop_reason"] == "tool_use"
 
 
+def test_response_conversion_reasoning() -> None:
+    # Reasoning models (e.g. DeepSeek) return chain-of-thought in
+    # ``reasoning_content``; it should become an Anthropic thinking block
+    # placed before the answer text.
+    openai_resp = {
+        "id": "chatcmpl-r",
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "reasoning_content": "Let me think...",
+                    "content": "The answer is 2",
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 9},
+    }
+    result = openai_to_anthropic_response(openai_resp, "claude-3-5-sonnet")
+    assert result["content"][0] == {"type": "thinking", "thinking": "Let me think..."}
+    assert result["content"][1] == {"type": "text", "text": "The answer is 2"}
+    assert result["stop_reason"] == "end_turn"
+
+
 def test_finish_reason_map() -> None:
     assert map_finish_reason("stop") == "end_turn"
     assert map_finish_reason("length") == "max_tokens"
@@ -170,6 +201,39 @@ def test_streaming_text() -> None:
     assert "message_stop" in joined
     assert '"stop_reason": "end_turn"' in joined
     assert '"output_tokens": 2' in joined
+
+
+def test_streaming_reasoning() -> None:
+    # A reasoning stream: reasoning_content deltas first, then content deltas.
+    async def fake_lines():
+        chunks = [
+            {"choices": [{"delta": {"reasoning_content": "think"}, "finish_reason": None}]},
+            {"choices": [{"delta": {"reasoning_content": "ing"}, "finish_reason": None}]},
+            {"choices": [{"delta": {"content": "answer"}, "finish_reason": None}]},
+            {"choices": [{"delta": {}, "finish_reason": "stop"}],
+             "usage": {"completion_tokens": 3}},
+        ]
+        for c in chunks:
+            yield f"data: {json.dumps(c)}"
+        yield "data: [DONE]"
+
+    async def run():
+        events = []
+        async for e in convert_openai_stream_to_anthropic(
+            fake_lines(), "claude-3-5-sonnet", "msg_test"
+        ):
+            events.append(e)
+        return events
+
+    joined = "".join(asyncio.run(run()))
+    # thinking block (index 0) opened before the text block (index 1)
+    assert '"content_block": {"type": "thinking"' in joined
+    assert '"type": "thinking_delta", "thinking": "think"' in joined
+    assert '"content_block": {"type": "text"' in joined
+    assert "answer" in joined
+    # thinking block starts at index 0, text at index 1
+    assert '"content_block_start", "index": 0' in joined
+    assert '"content_block_start", "index": 1' in joined
 
 
 def _run_all() -> None:

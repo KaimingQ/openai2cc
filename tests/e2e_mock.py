@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
 
@@ -18,10 +19,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Point the proxy at our mock upstream before importing it.
+# Point the proxy at our mock upstream and isolate its config file.
 os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:9099/v1"
 os.environ["OPENAI_API_KEY"] = "mock-key"
 os.environ["PORT"] = "8099"
+os.environ["CONFIG_PATH"] = os.path.join(tempfile.gettempdir(), "o2a_e2e_config.json")
+if os.path.exists(os.environ["CONFIG_PATH"]):
+    os.remove(os.environ["CONFIG_PATH"])
 
 from app.main import app as proxy_app  # noqa: E402
 
@@ -67,6 +71,23 @@ def main() -> None:
     time.sleep(3)
 
     base = "http://127.0.0.1:8099"
+
+    # the setup page auto-generates an Anthropic key that /v1 now requires
+    cfg = httpx.get(f"{base}/config", timeout=10).json()
+    assert cfg["anthropic_api_key"].startswith("sk-ant-proxy-"), cfg
+    assert cfg["anthropic_base_url"].startswith("http://"), cfg
+    assert cfg["ready"] is True, cfg
+    key = cfg["anthropic_api_key"]
+    hdr = {"x-api-key": key}
+    print("  ok  /config -> anthropic key generated, upstream ready")
+
+    # missing key must be rejected
+    r = httpx.post(f"{base}/v1/messages", json={
+        "model": "claude-3-5-sonnet", "max_tokens": 10,
+        "messages": [{"role": "user", "content": "hi"}]}, timeout=10)
+    assert r.status_code == 401, r.status_code
+    print("  ok  /v1/messages without key -> 401")
+
     payload = {
         "model": "claude-3-5-sonnet-20241022",
         "max_tokens": 100,
@@ -74,7 +95,7 @@ def main() -> None:
     }
 
     # non-streaming
-    r = httpx.post(f"{base}/v1/messages", json=payload, timeout=10)
+    r = httpx.post(f"{base}/v1/messages", json=payload, headers=hdr, timeout=10)
     r.raise_for_status()
     data = r.json()
     assert data["type"] == "message", data
@@ -84,7 +105,8 @@ def main() -> None:
 
     # streaming
     payload["stream"] = True
-    with httpx.stream("POST", f"{base}/v1/messages", json=payload, timeout=10) as s:
+    with httpx.stream("POST", f"{base}/v1/messages", json=payload,
+                      headers=hdr, timeout=10) as s:
         events = "".join(chunk for chunk in s.iter_text())
     assert "message_start" in events
     assert "text_delta" in events
@@ -93,16 +115,23 @@ def main() -> None:
     print("  ok  streaming /v1/messages -> received full SSE sequence")
 
     # count_tokens
-    r = httpx.post(f"{base}/v1/messages/count_tokens", json=payload, timeout=10)
+    r = httpx.post(f"{base}/v1/messages/count_tokens", json=payload,
+                   headers=hdr, timeout=10)
     r.raise_for_status()
     assert "input_tokens" in r.json()
     print("  ok  /v1/messages/count_tokens ->", r.json())
+
+    # upstream connectivity test endpoint
+    r = httpx.post(f"{base}/config/test", timeout=10)
+    r.raise_for_status()
+    assert r.json()["ok"] is True, r.json()
+    print("  ok  /config/test ->", r.json()["message"])
 
     # web UI is served at root
     r = httpx.get(f"{base}/", timeout=10)
     r.raise_for_status()
     assert "OpenAI → Anthropic" in r.text
-    print("  ok  GET / -> web UI served")
+    print("  ok  GET / -> web setup page served")
 
     # dashboard stats reflect the requests we just made
     r = httpx.get(f"{base}/dashboard/stats", timeout=10)

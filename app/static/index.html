@@ -3,127 +3,171 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OpenAI → Anthropic Proxy 控制台</title>
+<title>OpenAI → Anthropic 接入配置</title>
 <style>
   :root {
     --bg: #0f1220; --panel: #171a2b; --panel2: #1e2236; --line: #2a2f4a;
     --text: #e7e9f2; --muted: #9aa0bd; --accent: #7c8cff;
-    --accent2: #43d6a3; --danger: #ff6b6b; --chip: #262b45;
+    --accent2: #43d6a3; --danger: #ff6b6b; --warn: #ffcf5c; --chip: #262b45;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
     background: var(--bg); color: var(--text); }
+  a { color: var(--accent); }
   header { display: flex; align-items: center; gap: 16px; padding: 14px 22px;
     background: var(--panel); border-bottom: 1px solid var(--line); }
   header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--muted); font-size: 12px; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .tabs { margin-left: auto; display: flex; gap: 6px; }
   .tab { padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
     color: var(--muted); border: 1px solid transparent; }
   .tab.active { background: var(--panel2); color: var(--text); border-color: var(--line); }
-  main { padding: 18px 22px; max-width: 1100px; margin: 0 auto; }
+  main { padding: 20px 22px; max-width: 860px; margin: 0 auto; }
   .hidden { display: none !important; }
 
-  /* Playground */
-  .pg { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
-  input, textarea, select { width: 100%; background: var(--panel2); color: var(--text);
-    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 18px; }
+  .card h2 { font-size: 14px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .step { width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
+  .card .desc { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  input { width: 100%; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px;
     font-family: inherit; }
-  textarea { resize: vertical; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .switch { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
-  button { cursor: pointer; border: none; border-radius: 8px; padding: 9px 16px;
-    font-size: 13px; font-weight: 600; }
+  input[readonly] { color: var(--accent2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-copy { display: flex; gap: 8px; }
+  .field-copy input { flex: 1; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 16px;
+    font-size: 13px; font-weight: 600; white-space: nowrap; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-ghost { background: var(--chip); color: var(--text); }
   .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
-  .chat { display: flex; flex-direction: column; height: calc(100vh - 150px); }
-  .messages { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { padding: 10px 14px; border-radius: 12px; max-width: 82%; white-space: pre-wrap;
-    word-break: break-word; line-height: 1.5; font-size: 14px; }
-  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
-  .msg.assistant { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); }
-  .msg .meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
-  .composer { display: flex; gap: 8px; margin-top: 10px; }
-  .composer textarea { flex: 1; height: 60px; }
+  .actions { display: flex; gap: 10px; margin-top: 16px; }
+  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+  .status.ok { color: var(--accent2); } .status.err { color: var(--danger); }
+  .banner { border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 18px; }
+  .banner.ready { background: rgba(67,214,163,.12); color: var(--accent2); border: 1px solid rgba(67,214,163,.3); }
+  .banner.notready { background: rgba(255,207,92,.12); color: var(--warn); border: 1px solid rgba(255,207,92,.3); }
+  pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; font-size: 12.5px; margin: 8px 0 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; position: relative; }
+  .codeblock { position: relative; }
+  .codeblock .copy { position: absolute; top: 8px; right: 8px; padding: 4px 10px; font-size: 11px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 
-  /* Dashboard */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  /* dashboard */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
   .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
   .stat .k { color: var(--muted); font-size: 12px; }
-  .stat .v { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .stat .v { font-size: 24px; font-weight: 700; margin-top: 6px; }
   .stat .v.accent { color: var(--accent2); }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 500; }
   .section-title { display: flex; align-items: center; margin: 22px 0 10px; }
-  .section-title h3 { margin: 0; font-size: 14px; }
-  .section-title .spacer { flex: 1; }
+  .section-title h3 { margin: 0; font-size: 14px; } .section-title .spacer { flex: 1; }
   .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
   .ok { color: var(--accent2); } .err { color: var(--danger); }
   .scroll { max-height: 340px; overflow-y: auto; }
   .muted { color: var(--muted); font-size: 12px; }
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--accent2); color: #07130d; padding: 8px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
 <header>
   <div>
-    <h1>OpenAI → Anthropic Proxy</h1>
-    <div class="sub" id="cfg">加载配置中…</div>
+    <h1>OpenAI → Anthropic 接入转换器</h1>
+    <div class="sub">在本地把 OpenAI 格式 API 转换成 Anthropic 格式，供 Claude Code 使用</div>
   </div>
   <div class="tabs">
-    <div class="tab active" data-tab="playground">💬 对话调试</div>
+    <div class="tab active" data-tab="setup">⚙️ 接入配置</div>
     <div class="tab" data-tab="dashboard">📊 数据看板</div>
   </div>
 </header>
 
 <main>
-  <!-- Playground -->
-  <section id="playground" class="pg">
+  <!-- Setup -->
+  <section id="setup">
+    <div id="banner" class="banner notready">正在加载配置…</div>
+
     <div class="card">
-      <label>模型名称 (Anthropic)</label>
-      <input id="model" value="claude-3-5-sonnet-20241022" />
-      <label>System 提示（可选）</label>
-      <textarea id="system" rows="3" placeholder="You are a helpful assistant."></textarea>
+      <h2><span class="step">1</span> 填写你的上游 OpenAI 兼容 API</h2>
+      <p class="desc">输入你购买的 API 地址与密钥（OpenAI / Groq / Together / 本地 Ollama / LM Studio 等均可）。</p>
+
+      <label>OpenAI Base URL（含 /v1）</label>
+      <input id="baseUrl" placeholder="https://api.openai.com/v1" />
+
+      <label>OpenAI API Key</label>
+      <input id="apiKey" type="password" placeholder="sk-..." />
+      <div class="hint" id="keyHint"></div>
+
       <div class="row2">
-        <div><label>max_tokens</label><input id="maxtok" type="number" value="1024" /></div>
-        <div><label>temperature</label><input id="temp" type="number" step="0.1" value="1.0" /></div>
+        <div>
+          <label>大模型（映射 sonnet / opus）</label>
+          <input id="bigModel" placeholder="gpt-4o" />
+        </div>
+        <div>
+          <label>小模型（映射 haiku）</label>
+          <input id="smallModel" placeholder="gpt-4o-mini" />
+        </div>
       </div>
-      <label>x-api-key（若服务端设置了则必填）</label>
-      <input id="apikey" placeholder="留空即可" />
-      <div class="switch"><input type="checkbox" id="stream" checked style="width:auto" /> <span>流式输出 (SSE)</span></div>
-      <div style="margin-top:14px; display:flex; gap:8px;">
-        <button class="btn-ghost" id="clearBtn" style="flex:1">清空对话</button>
+
+      <div class="actions">
+        <button class="btn-primary" id="saveBtn">保存配置</button>
+        <button class="btn-ghost" id="testBtn">测试连接</button>
       </div>
+      <div class="status" id="setupStatus"></div>
     </div>
 
-    <div class="card chat">
-      <div class="messages" id="messages">
-        <div class="muted">在下方输入内容开始对话，请求会经由本代理转发到你配置的 OpenAI 兼容后端。</div>
+    <div class="card">
+      <h2><span class="step">2</span> 把下面信息填入 Claude Code</h2>
+      <p class="desc">对你来说只是换了一个接口地址和密钥。系统已自动为你生成 Anthropic 接入信息。</p>
+
+      <label>ANTHROPIC_BASE_URL</label>
+      <div class="field-copy">
+        <input id="antUrl" readonly />
+        <button class="btn-ghost" data-copy="antUrl">复制</button>
       </div>
-      <div class="composer">
-        <textarea id="prompt" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
-        <button class="btn-primary" id="sendBtn">发送</button>
+
+      <label>ANTHROPIC_API_KEY</label>
+      <div class="field-copy">
+        <input id="antKey" readonly />
+        <button class="btn-ghost" data-copy="antKey">复制</button>
+        <button class="btn-danger" id="regenBtn">重新生成</button>
       </div>
+
+      <label style="margin-top:18px">方法 A · 环境变量后启动 Claude Code</label>
+      <div class="codeblock">
+        <button class="btn-ghost copy" data-copy-el="envBlock">复制</button>
+        <pre id="envBlock"></pre>
+      </div>
+
+      <label style="margin-top:14px">方法 B · 写入 <code>~/.claude/settings.json</code></label>
+      <div class="codeblock">
+        <button class="btn-ghost copy" data-copy-el="jsonBlock">复制</button>
+        <pre id="jsonBlock"></pre>
+      </div>
+      <p class="hint">配置完成后，直接运行 <code>claude</code> 即可，所有请求会经由本转换器转发到你的上游模型。</p>
     </div>
   </section>
 
   <!-- Dashboard -->
   <section id="dashboard" class="hidden">
     <div class="grid" id="statCards"></div>
-
     <div class="section-title">
       <h3>按模型统计</h3><div class="spacer"></div>
-      <span class="pill" id="autoTip">每 3 秒自动刷新</span>
+      <span class="pill">每 3 秒自动刷新</span>
     </div>
     <div class="card"><table id="modelTable">
       <thead><tr><th>请求模型</th><th>映射到</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>错误</th></tr></thead>
       <tbody></tbody>
     </table></div>
-
     <div class="section-title">
       <h3>最近请求</h3><div class="spacer"></div>
       <button class="btn-danger" id="resetBtn">清空统计</button>
@@ -135,135 +179,111 @@
   </section>
 </main>
 
+<div class="toast" id="toast">已复制</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
+let cfg = {};
 
-/* ---- tab switching ---- */
+/* ---- tabs ---- */
 let dashTimer = null;
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
   t.classList.add("active");
   const tab = t.dataset.tab;
-  $("playground").classList.toggle("hidden", tab !== "playground");
+  $("setup").classList.toggle("hidden", tab !== "setup");
   $("dashboard").classList.toggle("hidden", tab !== "dashboard");
   if (tab === "dashboard") { refreshStats(); dashTimer = setInterval(refreshStats, 3000); }
   else if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
 });
 
-/* ---- load config ---- */
-fetch("/info").then(r => r.json()).then(d => {
-  $("cfg").textContent = `上游: ${d.upstream}  ·  big=${d.big_model}  ·  small=${d.small_model}  ·  v${d.version}`;
-}).catch(() => {});
-
-/* ---- playground chat ---- */
-const history = [];  // {role, content}
-
-function addMessage(role, text) {
-  const el = document.createElement("div");
-  el.className = "msg " + role;
-  el.textContent = text;
-  const empty = $("messages").querySelector(".muted");
-  if (empty) empty.remove();
-  $("messages").appendChild(el);
-  $("messages").scrollTop = $("messages").scrollHeight;
-  return el;
+/* ---- toast + copy ---- */
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1400);
 }
-
-function setMeta(el, meta) {
-  let m = el.querySelector(".meta");
-  if (!m) { m = document.createElement("div"); m.className = "meta"; el.appendChild(m); }
-  m.textContent = meta;
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("已复制到剪贴板"); }
+  catch (_) { toast("复制失败，请手动复制"); }
 }
-
-async function send() {
-  const text = $("prompt").value.trim();
-  if (!text) return;
-  $("prompt").value = "";
-  addMessage("user", text);
-  history.push({ role: "user", content: text });
-
-  const body = {
-    model: $("model").value.trim() || "claude-3-5-sonnet-20241022",
-    max_tokens: parseInt($("maxtok").value) || 1024,
-    temperature: parseFloat($("temp").value),
-    messages: history,
-    stream: $("stream").checked,
-  };
-  const sys = $("system").value.trim();
-  if (sys) body.system = sys;
-
-  const headers = { "content-type": "application/json" };
-  const key = $("apikey").value.trim();
-  if (key) headers["x-api-key"] = key;
-
-  const assistantEl = addMessage("assistant", "");
-  const t0 = performance.now();
-  $("sendBtn").disabled = true;
-
-  try {
-    const resp = await fetch("/v1/messages", { method: "POST", headers, body: JSON.stringify(body) });
-    if (!resp.ok && !body.stream) {
-      const e = await resp.text();
-      assistantEl.textContent = "⚠️ " + e; $("sendBtn").disabled = false; return;
-    }
-
-    let full = "";
-    if (body.stream) {
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop();
-        for (const part of parts) {
-          const line = part.split("\n").find(l => l.startsWith("data:"));
-          if (!line) continue;
-          try {
-            const data = JSON.parse(line.slice(5).trim());
-            if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
-              full += data.delta.text;
-              assistantEl.textContent = full;
-              $("messages").scrollTop = $("messages").scrollHeight;
-            } else if (data.type === "error") {
-              full += "⚠️ " + (data.error?.message || "error");
-              assistantEl.textContent = full;
-            }
-          } catch (_) {}
-        }
-      }
-    } else {
-      const data = await resp.json();
-      full = (data.content || []).map(b => b.type === "text" ? b.text
-        : b.type === "tool_use" ? `\n[tool_use ${b.name}] ${JSON.stringify(b.input)}` : "").join("");
-      assistantEl.textContent = full;
-    }
-
-    history.push({ role: "assistant", content: full });
-    setMeta(assistantEl, `${((performance.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (err) {
-    assistantEl.textContent = "⚠️ 请求失败: " + err.message;
-  } finally {
-    $("sendBtn").disabled = false;
-  }
-}
-
-$("sendBtn").onclick = send;
-$("prompt").addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-copy]");
+  if (el) return copyText($(el.dataset.copy).value);
+  const elb = e.target.closest("[data-copy-el]");
+  if (elb) return copyText($(elb.dataset.copyEl).textContent);
 });
-$("clearBtn").onclick = () => {
-  history.length = 0;
-  $("messages").innerHTML = '<div class="muted">对话已清空。</div>';
+
+/* ---- config load / render ---- */
+function renderConfig() {
+  $("baseUrl").value = cfg.openai_base_url || "";
+  $("bigModel").value = cfg.big_model || "";
+  $("smallModel").value = cfg.small_model || "";
+  $("antUrl").value = cfg.anthropic_base_url || "";
+  $("antKey").value = cfg.anthropic_api_key || "";
+  $("keyHint").textContent = cfg.openai_api_key_set
+    ? `当前已保存密钥：${cfg.openai_api_key_masked}（留空则保持不变）` : "尚未设置密钥";
+
+  const b = $("banner");
+  if (cfg.ready) {
+    b.className = "banner ready";
+    b.textContent = "✓ 上游已配置，转换器就绪，可以在 Claude Code 中使用下方接入信息。";
+  } else {
+    b.className = "banner notready";
+    b.textContent = "⚠ 上游尚未配置完整，请在下方填写 Base URL 与 API Key 并保存。";
+  }
+
+  const url = cfg.anthropic_base_url, key = cfg.anthropic_api_key;
+  $("envBlock").textContent =
+    `export ANTHROPIC_BASE_URL="${url}"\nexport ANTHROPIC_API_KEY="${key}"\nclaude`;
+  $("jsonBlock").textContent = JSON.stringify(
+    { env: { ANTHROPIC_BASE_URL: url, ANTHROPIC_API_KEY: key } }, null, 2);
+}
+
+async function loadConfig() {
+  cfg = await (await fetch("/config")).json();
+  renderConfig();
+}
+
+$("saveBtn").onclick = async () => {
+  const body = {
+    openai_base_url: $("baseUrl").value.trim(),
+    big_model: $("bigModel").value.trim(),
+    small_model: $("smallModel").value.trim(),
+  };
+  const k = $("apiKey").value.trim();
+  if (k) body.openai_api_key = k;
+  const s = $("setupStatus"); s.className = "status"; s.textContent = "保存中…";
+  try {
+    cfg = await (await fetch("/config", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })).json();
+    $("apiKey").value = "";
+    renderConfig();
+    s.className = "status ok"; s.textContent = "✓ 已保存";
+  } catch (e) { s.className = "status err"; s.textContent = "保存失败: " + e.message; }
+};
+
+$("testBtn").onclick = async () => {
+  const s = $("setupStatus"); s.className = "status"; s.textContent = "正在测试上游连接…";
+  try {
+    const r = await (await fetch("/config/test", { method: "POST" })).json();
+    s.className = "status " + (r.ok ? "ok" : "err");
+    s.textContent = (r.ok ? "✓ " : "✗ ") + r.message;
+  } catch (e) { s.className = "status err"; s.textContent = "测试失败: " + e.message; }
+};
+
+$("regenBtn").onclick = async () => {
+  if (!confirm("重新生成后旧 Key 立即失效，需在 Claude Code 中更新。确定继续？")) return;
+  cfg = await (await fetch("/config/regenerate-key", { method: "POST" })).json();
+  renderConfig();
+  toast("已生成新的 Anthropic Key");
 };
 
 /* ---- dashboard ---- */
 function card(k, v, accent) {
   return `<div class="stat"><div class="k">${k}</div><div class="v ${accent ? 'accent' : ''}">${v}</div></div>`;
 }
-
 async function refreshStats() {
   try {
     const d = await (await fetch("/dashboard/stats")).json();
@@ -275,14 +295,12 @@ async function refreshStats() {
       card("输出 tokens", (t.total_output_tokens || 0).toLocaleString(), true) +
       card("平均延迟", (t.avg_latency_ms || 0) + " ms") +
       card("错误数", t.total_errors || 0);
-
     const mt = $("modelTable").querySelector("tbody");
     mt.innerHTML = Object.entries(d.by_model || {}).map(([m, s]) =>
       `<tr><td>${m}</td><td class="muted">${s.mapped_model || "-"}</td><td>${s.requests}</td>
        <td>${(s.input_tokens || 0).toLocaleString()}</td><td>${(s.output_tokens || 0).toLocaleString()}</td>
        <td class="${s.errors ? 'err' : ''}">${s.errors || 0}</td></tr>`).join("")
       || `<tr><td colspan="6" class="muted">暂无数据</td></tr>`;
-
     const rt = $("recentTable").querySelector("tbody");
     rt.innerHTML = (d.recent || []).map(r =>
       `<tr><td class="muted">${r.time}</td><td>${r.requested_model}</td><td>${r.input_tokens}</td>
@@ -291,12 +309,13 @@ async function refreshStats() {
       || `<tr><td colspan="7" class="muted">暂无数据</td></tr>`;
   } catch (_) {}
 }
-
 $("resetBtn").onclick = async () => {
   if (!confirm("确定清空所有统计数据？")) return;
   await fetch("/dashboard/reset", { method: "POST" });
   refreshStats();
 };
+
+loadConfig();
 </script>
 </body>
 </html>

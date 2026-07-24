@@ -21,3 +21,6 @@ env/
 
 # Runtime statistics
 stats.json
+
+# Runtime configuration (contains upstream key)
+config.json

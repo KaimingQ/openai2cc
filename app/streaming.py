@@ -29,6 +29,9 @@ class _StreamState:
 
     def __init__(self) -> None:
         self.next_index = 0
+        self.thinking_index: Optional[int] = None
+        self.thinking_started = False
+        self.thinking_closed = False
         self.text_index: Optional[int] = None
         self.text_started = False
         # OpenAI tool_call index -> Anthropic content block index
@@ -96,9 +99,43 @@ async def convert_openai_stream_to_anthropic(
         choice = choices[0]
         delta = choice.get("delta", {}) or {}
 
+        # --- reasoning (thinking) delta ---
+        # Some OpenAI-compatible providers (e.g. DeepSeek reasoning models)
+        # stream chain-of-thought separately in ``reasoning_content``; surface
+        # it as an Anthropic ``thinking`` block.
+        reasoning_piece = delta.get("reasoning_content")
+        if isinstance(reasoning_piece, str) and reasoning_piece:
+            if not state.thinking_started:
+                state.thinking_index = state.next_index
+                state.next_index += 1
+                state.thinking_started = True
+                yield _sse(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": state.thinking_index,
+                        "content_block": {"type": "thinking", "thinking": ""},
+                    },
+                )
+            yield _sse(
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": state.thinking_index,
+                    "delta": {"type": "thinking_delta", "thinking": reasoning_piece},
+                },
+            )
+
         # --- text delta ---
         text_piece = delta.get("content")
         if isinstance(text_piece, str) and text_piece:
+            # Close the thinking block before the first visible text.
+            if state.thinking_started and not state.thinking_closed:
+                state.thinking_closed = True
+                yield _sse(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": state.thinking_index},
+                )
             if not state.text_started:
                 state.text_index = state.next_index
                 state.next_index += 1
@@ -162,6 +199,12 @@ async def convert_openai_stream_to_anthropic(
             state.finish_reason = choice["finish_reason"]
 
     # 2. close any open content blocks
+    if state.thinking_started and not state.thinking_closed:
+        state.thinking_closed = True
+        yield _sse(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": state.thinking_index},
+        )
     if state.text_started and state.text_index is not None:
         yield _sse(
             "content_block_stop",
